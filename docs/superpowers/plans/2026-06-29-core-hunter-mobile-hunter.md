@@ -6,7 +6,7 @@
 
 **Architecture:** Fork the proven CoreDrive RX capture→queue→MQTT pipeline into a new `app/` PWA, but (a) keep 1-byte prefixes, (b) treat hop-count as the primary direction-finding gradient (`is_direct = hops.length===0`), (c) replace the three-tab UI with a distinct map-first "Signal HUD" look & feel, and (d) publish *everything* the companion hears to a dedicated MQTT topic. A new Go `server/` ingestor subscribes and writes all receptions into its own SQLite DB (no purge). Multi-hunter website is a later iteration.
 
-**Tech Stack:** Vite ES-module PWA, Web Bluetooth, phone Geolocation, `mqtt` 5.x over WSS, IndexedDB, Leaflet 1.9.4; Go 1.22 + `modernc.org/sqlite` (CGO-free) + `eclipse/paho.mqtt.golang`.
+**Tech Stack:** Vite ES-module PWA, Web Bluetooth, phone Geolocation, `mqtt` 5.x over WSS, IndexedDB, Leaflet 1.9.4; Go 1.24 + `modernc.org/sqlite` (CGO-free) + `eclipse/paho.mqtt.golang`. (Go directive raised from 1.22 to 1.24 during A3: `paho.mqtt.golang` and `golang.org/x/*` require go 1.24, so `go mod tidy` pins 1.24 as the real floor.)
 
 ## Global Constraints
 
@@ -534,7 +534,7 @@ git commit -m "feat(server): subscribe to hunter topic and persist receptions"
 
 `server/Dockerfile`:
 ```dockerfile
-FROM golang:1.22-alpine AS build
+FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
