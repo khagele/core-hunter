@@ -35,14 +35,17 @@ func main() {
 		SetClientID("core-hunter-ingestor").
 		SetAutoReconnect(true)
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
-		c.Subscribe(cfg.MQTTTopic, 1, func(_ mqtt.Client, m mqtt.Message) {
+		if tok := c.Subscribe(cfg.MQTTTopic, 1, func(_ mqtt.Client, m mqtt.Message) {
 			if err := ingest.Handle(st, m.Topic(), m.Payload(), func() string {
 				return time.Now().UTC().Format(time.RFC3339)
 			}); err != nil {
 				log.Printf("ingest error: %v", err)
 			}
-		})
-		log.Printf("subscribed to %s", cfg.MQTTTopic)
+		}); tok.Wait() && tok.Error() != nil {
+			log.Printf("subscribe error: %v", tok.Error())
+		} else {
+			log.Printf("subscribed to %s", cfg.MQTTTopic)
+		}
 	})
 	client := mqtt.NewClient(opts)
 	if t := client.Connect(); t.Wait() && t.Error() != nil {
