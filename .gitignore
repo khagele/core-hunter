@@ -1,0 +1,15 @@
+# deps / build
+node_modules/
+dist/
+.vite/
+
+# runtime config (broker creds etc.) — never commit
+config.json
+public/config.json
+.env
+.env.*
+
+# logs / os
+*.log
+.DS_Store
+Thumbs.db
