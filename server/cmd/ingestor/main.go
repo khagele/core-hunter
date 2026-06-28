@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -26,14 +28,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("store: %v", err)
 	}
-	defer st.Close()
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(cfg.MQTTURL).
 		SetUsername(cfg.MQTTUsername).
 		SetPassword(cfg.MQTTPassword).
 		SetClientID("core-hunter-ingestor").
-		SetAutoReconnect(true)
+		SetAutoReconnect(true).
+		SetCleanSession(false)
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		log.Printf("mqtt connection lost: %v", err)
+	})
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		if tok := c.Subscribe(cfg.MQTTTopic, 1, func(_ mqtt.Client, m mqtt.Message) {
 			if err := ingest.Handle(st, m.Topic(), m.Payload(), func() string {
@@ -47,15 +52,35 @@ func main() {
 			log.Printf("subscribed to %s", cfg.MQTTTopic)
 		}
 	})
+
 	client := mqtt.NewClient(opts)
+
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if client == nil || !client.IsConnected() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("mqtt disconnected"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	go func() {
+		if err := http.ListenAndServe(cfg.HTTPAddr, nil); err != nil {
+			log.Printf("http server stopped: %v", err)
+		}
+	}()
+
 	if t := client.Connect(); t.Wait() && t.Error() != nil {
 		log.Fatalf("mqtt connect: %v", t.Error())
 	}
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
 	log.Printf("ingestor listening on %s, topic %s", cfg.HTTPAddr, cfg.MQTTTopic)
-	log.Fatal(http.ListenAndServe(cfg.HTTPAddr, nil))
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	log.Printf("shutting down")
+	client.Disconnect(250)
+	_ = st.Close()
 }
