@@ -1,0 +1,1 @@
+{ "mqttUrl": "tcp://broker:1883", "mqttUsername": "ingestor", "mqttPassword": "x" }
