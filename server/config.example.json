@@ -1,0 +1,8 @@
+{
+  "mqttUrl": "tcp://<broker-host>:1883",
+  "mqttUsername": "core-hunter-ingestor",
+  "mqttPassword": "<set me>",
+  "mqttTopic": "meshcore/hunter/+/packets",
+  "dbPath": "/app/data/hunter.db",
+  "httpAddr": ":8090"
+}
