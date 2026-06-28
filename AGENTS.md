@@ -6,9 +6,18 @@
 ## Wat is core-hunter
 
 Een MeshCore **node-hunting / direction-finding** tool: een mobiele **hunter** (RX-scanner + live
-kaart) waarmee je rijdend/lopend een *spammer* node lokaliseert op basis van radiosignaal (SNR/RSSI)
-via mesh-topologie. Verbeterde opvolger van `hunter.bouwens.co`. Twee hergebruikte bases: de
-**CoreDrive RX**-scanner en de **CoreScope** kaart/visualisatie-backend.
+kaart) waarmee je rijdend/lopend een **doel-node van elk roltype** (companion, repeater, sensor,
+room-server, …) lokaliseert op basis van radiosignaal (SNR/RSSI) via mesh-topologie. Een
+public-channel-flooder is het motiverende voorbeeld, maar het doel kan elk zendend type zijn.
+Verbeterde opvolger van `hunter.bouwens.co`. Twee hergebruikte bases: de **CoreDrive RX**-scanner en
+de **CoreScope** kaart/visualisatie-backend.
+
+**Peilprincipe — minder hops eerst, dan sterkste 0-hop signaal:** hop-count is de primaire gradient.
+Een pakket dat je op minder hops hoort betekent dat je dichter bij een directe RF-link met de bron
+zit; het einddoel is de bron **0-hop** (`hops==0`) horen en daarbinnen naar de sterkste SNR/RSSI rijden
+tot je op de fysieke locatie staat. Let op: niet elk doel adverteert — een **companion** stuurt geen
+adverts, dus je vindt 'm niet via een 0-hop advert maar via zijn verkeer, vaak alleen identificeerbaar
+op een (roterende of 1-byte) sender-prefix.
 
 **Belangrijk principe:** we meten radio via mesh-topologie / RX-coverage, **niet** GPS-tracking van het
 doel. We leiden *positie* af, geen transportmodus. Vermeld dit in elke output die positie suggereert.
@@ -54,7 +63,10 @@ filtering/polling biedt is een **latere** iteratie. Zie
 ## Datamodel
 
 Tabel `hunter_receptions` — alle ontvangsten, **geen purge**, `raw` (volledig pakket) blijft altijd
-staan voor latere her-parsing. Volledig schema: zie het ontwerpdoc.
+staan voor latere her-parsing. Volledig schema: zie het ontwerpdoc. Twee onafhankelijke assen:
+`hops`/`is_direct` (`hops==0`) = peilgradient; `sender_keylen` (1/2/3/32) = identificatie-granulariteit
+(1-byte altijd bewaard). `sender_role` wordt opportunistisch ingevuld als de bron adverteert (leeg bij
+een stille companion).
 
 ## Bouwen / draaien
 

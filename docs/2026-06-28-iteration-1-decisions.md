@@ -89,6 +89,30 @@ purge**, zodat achteraf nog extra analyses mogelijk zijn.
 
 ---
 
+## Vraag 7 — Maakt het roltype van het doel verschil voor receptie/analyse?
+
+Kanttekening van de gebruiker: de "spammer" kan van alles zijn — ook een companion of sensor.
+
+**Bevinding:** op **RF-niveau rol-agnostisch.** SNR/RSSI wordt op het ontvangen pakket gemeten,
+ongeacht het roltype; alle nodes op dezelfde channel delen dezelfde LoRa-parameters → waardes
+onderling vergelijkbaar. Wat per roltype verschilt: (a) welke pakkettypes / hoe vaak je het doel hoort,
+(b) hoe je de bron identificeert.
+
+**Cruciale operationele toevoeging (gebruiker):** niet elk doel adverteert — een **companion stuurt
+geen adverts**, dus niet vindbaar via een 0-hop advert (volledige pubkey), maar via zijn verkeer, vaak
+alleen op een roterende of 1-byte sender-prefix. Daarom is **hop-count de primaire peilgradient**:
+minder hops = dichter bij directe RF-link; einddoel = bron **0-hop** horen en dan naar sterkste
+SNR/RSSI rijden.
+
+**Beslissingen:**
+1. **Wording overal deframen** van "spammer" → "doel-node van elk roltype" (spammer blijft als
+   motiverend voorbeeld). Toegepast in AGENTS.md, ontwerpdoc, deze log.
+2. **Hop-count als eersterangs as.** `is_direct` = `hops==0` (ontkoppeld van 1-byte). Kaart: 0-hop
+   uitgelicht, gerelayd vervaagd, filter op max-hops. 1-byte blijft een aparte identificatie-as
+   (`sender_keylen`), altijd bewaard.
+3. **`sender_role` opportunistisch meenemen** — afgeleid uit advert indien aanwezig; leeg voor een
+   stille companion. Handig om bij ongefilterd peilen repeater vs. doel te onderscheiden.
+
 ## Bevestigde requirements (geen vraag, ter vastlegging)
 
 - **Connection-drop resilience:** kaart wordt opgebouwd uit lokale IndexedDB, niet uit live geheugen;
