@@ -32,10 +32,21 @@ CREATE TABLE IF NOT EXISTS hunter_receptions (
 CREATE INDEX IF NOT EXISTS idx_recv_rxat   ON hunter_receptions(rx_at);
 CREATE INDEX IF NOT EXISTS idx_recv_sender ON hunter_receptions(sender_key);
 CREATE INDEX IF NOT EXISTS idx_recv_geo    ON hunter_receptions(lat, lon);
+CREATE TABLE IF NOT EXISTS raw_messages (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic        TEXT,
+  payload      TEXT NOT NULL,
+  received_at  TEXT NOT NULL,
+  error        TEXT
+);
 `
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	dsn := path
+	if path != ":memory:" {
+		dsn = "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +65,14 @@ func (s *Store) Insert(r Reception) error {
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.HunterPubkey, r.HunterName, r.RxAt, r.IngestedAt, r.SNR, r.RSSI, r.Raw, r.PacketType,
 		r.SenderKey, r.SenderKeylen, r.SenderRole, b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic,
+	)
+	return err
+}
+
+func (s *Store) InsertRaw(topic, payload, receivedAt, errMsg string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO raw_messages (topic, payload, received_at, error) VALUES (?,?,?,?)`,
+		topic, payload, receivedAt, errMsg,
 	)
 	return err
 }

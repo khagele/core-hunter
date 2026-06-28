@@ -46,3 +46,21 @@ func TestInsertRoundTrip(t *testing.T) {
 		t.Fatalf("rows=%d want 1", n)
 	}
 }
+
+func TestInsertRawRoundTrip(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	if err := st.InsertRaw("t", "body", "now", "oops"); err != nil {
+		t.Fatalf("InsertRaw: %v", err)
+	}
+	var payload, errMsg string
+	if err := st.db.QueryRow(`SELECT payload, error FROM raw_messages WHERE topic='t'`).Scan(&payload, &errMsg); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if payload != "body" || errMsg != "oops" {
+		t.Fatalf("got payload=%q error=%q", payload, errMsg)
+	}
+}
