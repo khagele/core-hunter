@@ -6,8 +6,10 @@
 ## TL;DR
 
 - **Phase A (Go MQTT ingestor, `server/`) is COMPLETE, reviewed, and pushed.** Builds CGO-free, all tests green.
-- **Phase B (mobile hunter PWA, `app/`) is NOT started.** Full task-by-task plan is written and committed.
+- **Phase B (mobile hunter PWA, `app/`) is COMPLETE (tasks B1–B8), reviewed, and pushed.** `npm run build` clean; 12 Vitest tests green. Only **B9 (advert `sender_role` decoding) remains deferred** — it needs firmware, see the plan. **Live field/bench test with a real companion radio is still outstanding** (it needs hardware; cannot be run from a dev box).
 - **Deploy is PENDING** (ingestor not yet running on the server) — see "Deploy" below; needs an EMQX account + your go-ahead.
+
+> Phase B was executed task-by-task via subagent-driven-development with per-task spec + code-quality review and a final whole-branch review. All 11 Phase B commits are on `origin/master` (range `5f1a7e3..HEAD`). The final review confirmed the PWA→ingestor payload contract matches field-for-field and the resilience invariants hold (map renders from IndexedDB; drain never deletes rows; no-GPS receptions are dropped).
 
 ## Resume on a new machine
 
@@ -77,12 +79,25 @@ Not done yet. Steps when ready (host: deploy-host, per `~/.claude/CLAUDE.md`):
 4. **Non-root gotcha:** the image runs as uid 65532 (distroless nonroot). The `core-hunter-data` volume must be writable by that uid — `chown 65532:65532` the volume's mountpoint (or pre-create it) or the DB open will fail.
 5. Verify: `curl localhost:8090/healthz` → `ok` (503 until MQTT connects).
 
-## Phase B — how to continue (app/)
+## Phase B — what's built (app/) + how to continue
 
-The plan's tasks **B1–B9** are fully specified (file paths, complete code, tests). Execution approach used so far is **subagent-driven-development** (one implementer subagent per task → task review → fix loop → final whole-branch review). To resume:
+Tasks **B1–B8 are DONE** (committed + pushed). The PWA under `app/` is a Vite ES-module app:
+- **Scaffold + identity** (B1): map-first HUD, `--ch-*` tokens, two distinct themes (dark default + light), thermal ramp where **hot = strong = close**.
+- **Ported platform modules** (B2): transport/frames/gps/selfinfo/config/names copied verbatim from CoreDrive RX; `queue.js` IndexedDB renamed to db `core-hunter` / store `receptions`. (Upstream `wakelock*.js`/`sharelog.js` named in the original plan do **not exist** in `corescope-rx/src` and were correctly skipped.)
+- **Capture rule** (B3): `classifyReception` keeps **1-byte** prefixes, exposes `hops` as the DF axis, keeps unattributed 0-hop packets. 4 unit tests.
+- **Capture record + publisher** (B4): `buildRecord` + `Publisher.buildPayload`; publishes **everything** to `meshcore/hunter/{rxPubkey}/packets` QoS1.
+- **Filters** (B5): pure `makeFilter` (sender prefix / type / time-window / direct-only) — affects the **local map only**, never what's published. 4 unit tests.
+- **Hunt map** (B6): fullscreen Leaflet, `signal.js` thermal tiers (2 tests), `huntmap.js` hop-aware points (0-hop accent ring, relayed faded) + hex-heat, `hunt:isolate-sender` popup.
+- **Orchestrator** (B7): `app.js` — BLE→capture→IndexedDB, renders map **from the store** each tick, drains to MQTT **without deleting rows**, no-GPS→no row, HUD + layer/filter/settings controls, type chips, live BLE/MQTT dots.
+- **Docs/verify** (B8): `app/README.md`, root README updated.
 
-1. Open the plan, start at **Task B1** (PWA scaffold + design system).
-2. Re-run the SDD loop (or implement inline) task by task.
+**Upstream source path note:** the plan's relative `../corescope-rx` resolves wrong on this machine — the CoreDrive RX source is at `../corescope-rx/src` (siblings live directly under `../`, not `../meshcore/`).
+
+**What's left for Phase B:**
+1. **Live field/bench test** (plan Task B8 steps 1–2) — needs a real companion radio: Connect → confirm BLE+MQTT dots, SNR HUD updates, points appear, 0-hop ring + faded relays, layer/filter/isolate toggles, map survives a BLE drop, and rows land in `hunter_receptions` (1-byte `sender_keylen=1` rows present, `raw` populated). Serve over HTTPS/localhost (Web Bluetooth + Geolocation require it).
+2. **Task B9 (deferred):** decode advert `sender_role` **from MeshCore firmware** (never guess byte layouts). It's plumbed end-to-end as `null` today.
+
+Execution approach used: **subagent-driven-development** (implementer per task → spec review → code-quality review → fix loop → final whole-branch review).
 
 Key Phase B decisions already locked (don't re-litigate):
 - **Separate from CoreDrive RX**: fork its modules into `app/`, then adapt.
