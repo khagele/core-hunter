@@ -1,11 +1,9 @@
-import { bytesToHex } from './meshpacket.js'
+import { bytesToHex } from './decode.js'
 
-// shouldCapture enforces the iteration-2 zero-hop rule: only direct receptions
-// (hops === 0, isDirect === true) are captured, queued, and published.
-// Relayed packets describe the last repeater's RF conditions, not the target's.
+// Zero-hop rule (iteration 2): only direct receptions are captured/published.
 export function shouldCapture(cls) { return !!cls && cls.isDirect === true }
 
-export function buildRecord(frame, pkt, cls, gps, nowIso) {
+export function buildRecord(frame, cls, gps, nowIso) {
   return {
     rx_at: nowIso,
     raw: bytesToHex(frame.raw),
@@ -14,9 +12,10 @@ export function buildRecord(frame, pkt, cls, gps, nowIso) {
     lat: gps.lat,
     lon: gps.lon,
     acc_m: gps.acc_m,
-    sender_key: cls.senderKey,
-    sender_keylen: cls.senderKeylen,
-    sender_role: null, // iteration 1: advert role decoding deferred (Task B9)
+    sender_kind: cls.sender.kind,
+    sender_id: cls.sender.id,
+    sender_label: cls.sender.label,
+    channel_name: cls.channel,
     is_direct: cls.isDirect,
     hops: cls.hops,
     packet_type: cls.packetType,
