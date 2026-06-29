@@ -558,6 +558,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   el('layer-toggle').addEventListener('click', cycleLayer)
 
+  // Recenter button — re-enables follow mode and snaps back to my position.
+  // Hidden while following; the map reveals it once the user pans away.
+  el('recenter-btn').addEventListener('click', () => { if (state.map) state.map.recenter() })
+  if (state.map) state.map.onFollowChange((following) => { el('recenter-btn').hidden = following })
+
   el('filter-btn').addEventListener('click', () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden

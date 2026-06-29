@@ -5,7 +5,7 @@ import { getConfig } from './config.js'
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
   const cfg = getConfig()
   const offset = (cfg && cfg.rssiCalibrationOffset) || 0
   const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
@@ -27,6 +27,18 @@ export function createHuntMap(containerId) {
   let popupOpen = false
   map.on('popupopen', () => { popupOpen = true })
   map.on('popupclose', () => { popupOpen = false })
+
+  // Follow mode: the map auto-centres on each GPS fix until the user drags the
+  // map, then it stops following and a recenter button (wired in app.js) is
+  // shown. follow is only released once we have a position to return to, so the
+  // button is never offered when recenter would be a no-op.
+  // On the first fix we zoom in to ACQUIRE_ZOOM (street level for hunting);
+  // after that, follow keeps whatever zoom the user has set.
+  const ACQUIRE_ZOOM = 18
+  let follow = true, lastPos = null, onFollow = null, acquired = false
+  map.on('dragstart', () => {
+    if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) }
+  })
 
   function pointStyle(rec) {
     const tier = rssiTier(rec.rssi, offset)
@@ -70,13 +82,28 @@ export function createHuntMap(containerId) {
     }
   }
   function setPosition(lat, lon) {
+    lastPos = [lat, lon]
     here = here || L.circleMarker([lat, lon], { radius: 6, color: cssVar('--ch-accent'), weight: 2 }).addTo(map)
     here.setLatLng([lat, lon])
+    if (follow) {
+      map.setView([lat, lon], acquired ? (map.getZoom() ?? ACQUIRE_ZOOM) : ACQUIRE_ZOOM)
+      acquired = true
+    }
   }
   function centerOn(lat, lon) { map.setView([lat, lon], map.getZoom() ?? 15) }
+  // recenter re-enables follow and snaps back to the last known position.
+  function recenter() {
+    if (!lastPos) return
+    follow = true
+    map.setView(lastPos, map.getZoom() ?? 15)
+    if (onFollow) onFollow(true)
+  }
+  // onFollowChange registers a callback invoked with the follow flag whenever it
+  // flips (false when the user pans away, true on recenter).
+  function onFollowChange(cb) { onFollow = cb }
   function setLayerMode(m) { mode = m }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, render, setLayerMode, applyBasemap, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, destroy }
 }
 
 function popupHtml(r) {

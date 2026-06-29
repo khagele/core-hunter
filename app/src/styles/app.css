@@ -59,13 +59,14 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-family: system-ui, sans-serif; cursor: pointer; margin-top: 4px; }
 
 /* ---- FABs ---- */
-#layer-toggle, #filter-btn, #settings-btn { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #filter-btn, #settings-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 #layer-toggle { bottom: 192px; } #filter-btn { bottom: 246px; } #settings-btn { bottom: 300px; }
-#layer-toggle svg, #filter-btn svg { pointer-events: none; }
+#recenter-btn { bottom: 354px; }
+#layer-toggle svg, #filter-btn svg, #recenter-btn svg { pointer-events: none; }
 
 .fs-type-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .fs-type-label { font-size: 14px; color: var(--ch-muted); white-space: nowrap; }
