@@ -27,4 +27,17 @@ describe('makeFilter', () => {
     expect(f(rec({ packet_type: 'advert' }), now)).toBe(true)
     expect(f(rec({ packet_type: 'channel-msg' }), now)).toBe(false)
   })
+  it('ignore set excludes matching sender_key (case-insensitive)', () => {
+    const f = makeFilter({ ignore: new Set(['aabbccdd']), sender: null, types: null, windowMs: null, directOnly: false })
+    // Uppercase key is lowercased before matching → excluded
+    expect(f(rec({ sender_key: 'AABBCCDD' }), now)).toBe(false)
+    // Different key → kept
+    expect(f(rec({ sender_key: 'eeff0011' }), now)).toBe(true)
+    // sender_key null → never excluded by ignore filter
+    expect(f(rec({ sender_key: null }), now)).toBe(true)
+  })
+  it('null/absent ignore set ignores nothing', () => {
+    const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: false })
+    expect(f(rec({ sender_key: 'aabbccdd' }), now)).toBe(true)
+  })
 })

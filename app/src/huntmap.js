@@ -43,7 +43,7 @@ export function createHuntMap(containerId) {
         if (r.lat == null || r.lon == null) continue
         const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
         m.bindPopup(popupHtml(r))
-        m.on('popupopen', (e) => wireIsolate(e.popup, r))
+        m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
         m.addTo(pointLayer)
       }
     }
@@ -79,10 +79,16 @@ function popupHtml(r) {
     + `hops ${esc(r.hops)} · ${esc(r.packet_type)}<br>`
     + `sender ${esc(r.sender_key)} (${esc(r.sender_keylen)}B)<br>`
     + `role ${esc(r.sender_role)}<br>`
-    + `<button class="ch-isolate" ${r.sender_key ? '' : 'disabled'}>Isolate sender</button></div>`
+    + `<button class="ch-isolate" ${r.sender_key ? '' : 'disabled'}>Isolate sender</button>`
+    + ` <button class="ch-ignore" ${r.sender_key ? '' : 'disabled'}>Ignore this ID</button></div>`
 }
 function wireIsolate(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-isolate')
   if (btn && r.sender_key) btn.onclick = () => document.dispatchEvent(
     new CustomEvent('hunt:isolate-sender', { detail: { key: r.sender_key, keylen: r.sender_keylen } }))
+}
+function wireIgnore(popup, r) {
+  const btn = popup.getElement()?.querySelector('.ch-ignore')
+  if (btn && r.sender_key) btn.onclick = () => document.dispatchEvent(
+    new CustomEvent('hunt:ignore-sender', { detail: { key: r.sender_key, keylen: r.sender_keylen } }))
 }

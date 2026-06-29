@@ -5,7 +5,7 @@ function hexPrefixMatch(a, b) {
 }
 
 export function makeFilter(opts) {
-  const { sender, types, windowMs, directOnly } = opts
+  const { sender, types, windowMs, directOnly, ignore } = opts
   return (rec, nowMs) => {
     if (directOnly && !rec.is_direct) return false
     if (sender && !hexPrefixMatch(rec.sender_key, sender.key)) return false
@@ -14,6 +14,7 @@ export function makeFilter(opts) {
       const age = nowMs - Date.parse(rec.rx_at)
       if (!(age <= windowMs)) return false
     }
+    if (ignore && rec.sender_key != null && ignore.has(rec.sender_key.toLowerCase())) return false
     return true
   }
 }

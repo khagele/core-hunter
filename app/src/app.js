@@ -27,6 +27,21 @@ import { rssiTier } from './signal.js'
 // State
 // ---------------------------------------------------------------------------
 
+// Load persisted ignore-list (lowercase pubkeys). Non-fatal if missing/corrupt.
+function loadIgnore() {
+  try {
+    const raw = localStorage.getItem('core-hunter-ignore')
+    if (raw) return new Set(JSON.parse(raw))
+  } catch (_) {}
+  return new Set()
+}
+
+function saveIgnore(set) {
+  try {
+    localStorage.setItem('core-hunter-ignore', JSON.stringify([...set]))
+  } catch (_) {}
+}
+
 const state = {
   transport: null,
   gps: new Gps(),
@@ -41,6 +56,7 @@ const state = {
   // working set; re-publish dedup is the backend's concern (via raw+rx_at).
   // On app restart the Set is empty, so rows are republished; that is fine.
   published: new Set(),
+  ignore: loadIgnore(),
   filter: {
     sender: null,
     types: null,
@@ -114,7 +130,7 @@ async function renderTick() {
     if (state.map) {
       const rows = await state.queue.takeAll()
       const now = Date.now()
-      const fn = makeFilter(state.filter)
+      const fn = makeFilter({ ...state.filter, ignore: state.ignore })
       const visible = rows.filter((r) => fn(r, now))
       state.map.render(visible, now)
     }
@@ -293,6 +309,36 @@ function buildFilterSheet() {
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
 }
 
+function renderIgnoreList(listEl) {
+  listEl.innerHTML = ''
+  if (state.ignore.size === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'ss-ignore-empty'
+    empty.textContent = 'No ignored stations.'
+    listEl.appendChild(empty)
+    return
+  }
+  for (const key of state.ignore) {
+    const row = document.createElement('div')
+    row.className = 'ss-ignore-row'
+    const label = document.createElement('span')
+    label.className = 'ss-ignore-key'
+    label.textContent = key.slice(0, 12) + '…'
+    label.title = key
+    const rm = document.createElement('button')
+    rm.className = 'ss-ignore-remove'
+    rm.textContent = 'Remove'
+    rm.addEventListener('click', () => {
+      state.ignore.delete(key)
+      saveIgnore(state.ignore)
+      renderIgnoreList(listEl)
+    })
+    row.appendChild(label)
+    row.appendChild(rm)
+    listEl.appendChild(row)
+  }
+}
+
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
@@ -302,6 +348,11 @@ function buildSettingsSheet() {
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
+      <div class="ss-ignore-section">
+        <h3>Ignored stations</h3>
+        <div id="ss-ignore-list"></div>
+        <button id="ss-ignore-clear">Clear ignore-list</button>
+      </div>
       <button id="ss-close">Done</button>
     </div>`
 
@@ -312,6 +363,15 @@ function buildSettingsSheet() {
     document.documentElement.dataset.theme = theme
     if (state.map) state.map.applyBasemap()
   })
+
+  renderIgnoreList(el('ss-ignore-list'))
+
+  el('ss-ignore-clear').addEventListener('click', () => {
+    state.ignore.clear()
+    saveIgnore(state.ignore)
+    renderIgnoreList(el('ss-ignore-list'))
+  })
+
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
 }
 
@@ -341,6 +401,17 @@ document.addEventListener('hunt:isolate-sender', (e) => {
     chip.textContent = 'No target'
     chip.classList.remove('active')
   }
+})
+
+// ---------------------------------------------------------------------------
+// Ignore-sender event
+// ---------------------------------------------------------------------------
+
+document.addEventListener('hunt:ignore-sender', (e) => {
+  if (!e.detail || !e.detail.key) return
+  state.ignore.add(e.detail.key.toLowerCase())
+  saveIgnore(state.ignore)
+  // next renderTick picks up the updated set automatically
 })
 
 // ---------------------------------------------------------------------------
@@ -379,7 +450,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('settings-btn').addEventListener('click', () => {
     const sheet = el('settings-sheet')
     sheet.hidden = !sheet.hidden
-    if (!sheet.hidden) el('filter-sheet').hidden = true
+    if (!sheet.hidden) {
+      el('filter-sheet').hidden = true
+      renderIgnoreList(el('ss-ignore-list'))
+    }
   })
 
   // Target chip tap → clear isolation
