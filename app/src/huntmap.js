@@ -24,11 +24,15 @@ export function createHuntMap(containerId) {
   const hexLayer = L.layerGroup().addTo(map)
   let mode = 'both', here = null
 
+  let popupOpen = false
+  map.on('popupopen', () => { popupOpen = true })
+  map.on('popupclose', () => { popupOpen = false })
+
   function pointStyle(rec) {
     const tier = rssiTier(rec.rssi, offset)
     const color = cssVar(tierColorVar(tier))
     return {
-      radius: 7,
+      radius: 8,
       color,
       weight: 1,
       fillColor: color,
@@ -37,6 +41,7 @@ export function createHuntMap(containerId) {
   }
 
   function render(records, nowMs) {
+    if (popupOpen) return   // don't rebuild markers while the user is inspecting a popup (it would close it)
     pointLayer.clearLayers(); hexLayer.clearLayers()
     if (mode !== 'hex') {
       for (const r of records) {
@@ -76,9 +81,10 @@ export function createHuntMap(containerId) {
 
 function popupHtml(r) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+  const shortKey = r.sender_key ? (r.sender_key.length > 16 ? r.sender_key.slice(0, 16) + '…' : r.sender_key) : '—'
   return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
     + `hops ${esc(r.hops)} · ${esc(r.packet_type)}<br>`
-    + `sender ${esc(r.sender_key)} (${esc(r.sender_keylen)}B)<br>`
+    + `sender ${esc(shortKey)} (${esc(r.sender_keylen)}B)<br>`
     + `role ${esc(r.sender_role)}<br>`
     + `<button class="ch-isolate" ${r.sender_key ? '' : 'disabled'}>Isolate sender</button>`
     + ` <button class="ch-ignore" ${r.sender_key ? '' : 'disabled'}>Ignore this ID</button></div>`

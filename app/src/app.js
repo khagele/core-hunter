@@ -144,15 +144,20 @@ function setDot(id, on) {
 async function processFrame(dv) {
   const frame = parseFrame(dv)
   if (!frame || frame.code !== PUSH_CODE_LOG_RX_DATA) return
+  console.log('[frame] code=0x%s', frame.code.toString(16)) // TEMP debug (bench) — remove after testing
 
   const pkt = parsePacket(frame.raw)
   if (!pkt) return
 
   const cls = classifyReception('rx', pkt)
+  console.log('[rx] hops=%d direct=%s snr=%s rssi=%s type=%s sender=%s captured=%s', cls.hops, cls.isDirect, frame.snr, frame.rssi, cls.packetType, cls.senderKey, shouldCapture(cls)) // TEMP debug (bench) — remove after testing
   if (!shouldCapture(cls)) return   // iteration 2: only zero-hop is captured/queued/published
 
   const fix = state.manualFix || state.gps.latest()
-  if (!fix) return // no GPS fix → drop (coverage without position is useless)
+  if (!fix) { // TEMP debug (bench) — remove after testing
+    console.log('[rx] dropped: no GPS fix') // TEMP debug (bench) — remove after testing
+    return // no GPS fix → drop (coverage without position is useless)
+  }
 
   const rec = buildRecord(frame, pkt, cls, fix, new Date().toISOString())
   await state.queue.add(rec)
@@ -246,6 +251,7 @@ async function connectAll() {
     const info = await requestSelfInfo(state.transport, 'core-hunter')
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
+    console.log('[self] pubkey=%s name=%s', state.rxPubkey, state.name) // TEMP debug (bench) — remove after testing
 
     // 3. GPS
     state.gps.start((fix) => {
