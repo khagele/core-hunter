@@ -21,7 +21,7 @@ import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter } from './filters.js'
-import { snrTier } from './signal.js'
+import { rssiTier } from './signal.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -66,7 +66,8 @@ function updateHud(rec) {
   el('hud-snr').textContent = rec.snr != null ? rec.snr.toFixed(1) + ' dB' : '—'
   el('hud-rssi').textContent = rec.rssi != null ? rec.rssi + ' dBm' : '—'
   el('hud-hop').textContent = 'hop ' + (rec.hops != null ? rec.hops : '—')
-  const tier = snrTier(rec.snr)
+  const offset = (getConfig() && getConfig().rssiCalibrationOffset) || 0
+  const tier = rssiTier(rec.rssi, offset)
   const pct = TIER_PCT[tier] ?? 10
   el('hud-bar-fill').style.width = pct + '%'
 }

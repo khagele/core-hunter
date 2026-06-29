@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier } from '../signal.js'
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
@@ -14,5 +14,20 @@ describe('thermal signal tiers (hot = strong)', () => {
     expect(tierColorVar('hot')).toBe('--ch-sig-hot')
     expect(fillOpacity('hot')).toBeGreaterThan(fillOpacity('cold'))
     expect(fillOpacity('none')).toBeLessThan(fillOpacity('cool'))
+  })
+})
+
+describe('rssiTier — fixed dBm bands (hot = strong = close)', () => {
+  it('maps RSSI dBm to tiers', () => {
+    expect(rssiTier(-70)).toBe('hot')
+    expect(rssiTier(-85)).toBe('warm')
+    expect(rssiTier(-95)).toBe('mid')
+    expect(rssiTier(-105)).toBe('cool')
+    expect(rssiTier(-120)).toBe('cold')
+    expect(rssiTier(null)).toBe('none')
+  })
+  it('applies calibration offset before banding', () => {
+    // -92 + 5 = -87 → warm
+    expect(rssiTier(-92, 5)).toBe('warm')
   })
 })

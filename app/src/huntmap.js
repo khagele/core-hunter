@@ -1,10 +1,13 @@
 import { hexCellAt, hexBoundary } from './hexgrid.js'
-import { snrTier, tierColorVar, fillOpacity } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
+import { getConfig } from './config.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
   if (typeof L === 'undefined') return { setPosition() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
+  const cfg = getConfig()
+  const offset = (cfg && cfg.rssiCalibrationOffset) || 0
   const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
   const TILES = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -22,13 +25,14 @@ export function createHuntMap(containerId) {
   let mode = 'both', here = null
 
   function pointStyle(rec) {
-    const tier = snrTier(rec.snr)
+    const tier = rssiTier(rec.rssi, offset)
+    const color = cssVar(tierColorVar(tier))
     return {
-      radius: rec.is_direct ? 8 : 6,
-      color: rec.is_direct ? cssVar('--ch-direct-glow') : cssVar(tierColorVar(tier)),
-      weight: rec.is_direct ? 3 : 1,
-      fillColor: cssVar(tierColorVar(tier)),
-      fillOpacity: rec.is_direct ? fillOpacity(tier) : fillOpacity(tier) * 0.5,
+      radius: 7,
+      color,
+      weight: 1,
+      fillColor: color,
+      fillOpacity: fillOpacity(tier),
     }
   }
 
@@ -49,12 +53,12 @@ export function createHuntMap(containerId) {
         if (r.lat == null || r.lon == null) continue
         const id = hexCellAt(r.lat, r.lon, 11)
         const cur = cells.get(id)
-        if (!cur || (r.snr ?? -99) > (cur.best ?? -99)) cells.set(id, { best: r.snr })
+        if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
       }
       for (const [id, c] of cells) {
         // hexBoundary returns [lat,lon] pairs (closed ring) — directly usable by L.polygon
         const ring = hexBoundary(id); if (!ring) continue
-        const tier = snrTier(c.best)
+        const tier = rssiTier(c.best, offset)
         L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1,
           fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) }).addTo(hexLayer)
       }
