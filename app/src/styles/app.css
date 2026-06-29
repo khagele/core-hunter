@@ -16,10 +16,16 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #hud-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: #1b2230; overflow: hidden; }
 #hud-bar-fill { height: 100%; width: 0; background: linear-gradient(90deg,
   var(--ch-sig-cold), var(--ch-sig-cool), var(--ch-sig-mid), var(--ch-sig-warm), var(--ch-sig-hot)); }
-#layer-toggle, #filter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #filter-btn, #settings-btn { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); color: var(--ch-text);
   font-size: 20px; z-index: 500; }
-#layer-toggle { bottom: 150px; } #filter-btn { bottom: 204px; }
+#layer-toggle { bottom: 150px; } #filter-btn { bottom: 204px; } #settings-btn { bottom: 258px; }
+.fs-type-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.fs-type-label { font-size: 14px; color: var(--ch-muted); white-space: nowrap; }
+.fs-type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
+  background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }
+.fs-chip.active { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); }
 #filter-sheet, #settings-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%;
   overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
   border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }

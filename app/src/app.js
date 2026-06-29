@@ -106,6 +106,9 @@ async function processFrame(dv) {
 
 async function renderTick() {
   try {
+    // Keep MQTT dot honest — reflects live broker connection state each tick
+    setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
+
     if (state.map) {
       const rows = await state.queue.takeAll()
       const now = Date.now()
@@ -229,6 +232,8 @@ async function disconnectAll(silent) {
 // Filter sheet helpers
 // ---------------------------------------------------------------------------
 
+const FILTER_PACKET_TYPES = ['advert', 'discover', 'channel-msg', 'other']
+
 function buildFilterSheet() {
   const sheet = el('filter-sheet')
   sheet.innerHTML = `
@@ -247,6 +252,12 @@ function buildFilterSheet() {
           <option value="0">All time</option>
         </select>
       </label>
+      <div class="fs-type-row">
+        <span class="fs-type-label">Types</span>
+        <div id="fs-type-chips" class="fs-type-chips">
+          ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t}">${t}</button>`).join('')}
+        </div>
+      </div>
       <button id="fs-close">Done</button>
     </div>`
 
@@ -258,6 +269,17 @@ function buildFilterSheet() {
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked })
   sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null })
+
+  // Type chips — clicking a chip toggles it; when nothing is selected, types → null
+  el('fs-type-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.fs-chip')
+    if (!chip) return
+    chip.classList.toggle('active')
+    const selected = [...el('fs-type-chips').querySelectorAll('.fs-chip.active')]
+      .map(c => c.dataset.type)
+    state.filter.types = selected.length > 0 ? new Set(selected) : null
+  })
+
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
 }
 
@@ -342,6 +364,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) el('settings-sheet').hidden = true
+  })
+
+  el('settings-btn').addEventListener('click', () => {
+    const sheet = el('settings-sheet')
+    sheet.hidden = !sheet.hidden
+    if (!sheet.hidden) el('filter-sheet').hidden = true
   })
 
   // Target chip tap → clear isolation
