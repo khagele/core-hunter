@@ -64,3 +64,32 @@ func TestInsertRawRoundTrip(t *testing.T) {
 		t.Fatalf("got payload=%q error=%q", payload, errMsg)
 	}
 }
+
+func TestParsePayloadSenderFields(t *testing.T) {
+	body := []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","is_direct":true,"hops":0,
+	  "sender_kind":"channel_name","sender_id":"Spammer","sender_label":"Spammer","channel_name":"public",
+	  "packet_type":"GroupText","gps":{"lat":1,"lon":2}}`)
+	r, err := ParsePayload("t", body, "now")
+	if err != nil {
+		t.Fatalf("ParsePayload: %v", err)
+	}
+	if r.SenderKind != "channel_name" || r.SenderID != "Spammer" || r.SenderLabel != "Spammer" || r.ChannelName != "public" {
+		t.Fatalf("sender fields: %+v", r)
+	}
+}
+
+func TestInsertSenderFieldsRoundTrip(t *testing.T) {
+	st, _ := Open(":memory:")
+	defer st.Close()
+	r, _ := ParsePayload("t", []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","is_direct":true,"hops":0,"sender_kind":"direct_hash","sender_id":"4a","sender_label":"4a","packet_type":"Response","gps":{"lat":1,"lon":2}}`), "now")
+	if err := st.Insert(r); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	var kind, id string
+	if err := st.db.QueryRow(`SELECT sender_kind, sender_id FROM hunter_receptions ORDER BY id DESC LIMIT 1`).Scan(&kind, &id); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if kind != "direct_hash" || id != "4a" {
+		t.Fatalf("got %q %q", kind, id)
+	}
+}

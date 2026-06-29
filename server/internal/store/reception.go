@@ -14,6 +14,10 @@ type Reception struct {
 	SenderKey    string
 	SenderKeylen int
 	SenderRole   string
+	SenderKind   string
+	SenderID     string
+	SenderLabel  string
+	ChannelName  string
 	IsDirect     bool
 	Hops         int
 	Lat          float64
@@ -34,11 +38,15 @@ type payload struct {
 	SenderKey    string  `json:"sender_key"`
 	SenderKeylen int     `json:"sender_keylen"`
 	SenderRole   string  `json:"sender_role"`
+	SenderKind   string  `json:"sender_kind"`
+	SenderID     string  `json:"sender_id"`
+	SenderLabel  string  `json:"sender_label"`
+	ChannelName  string  `json:"channel_name"`
 	PacketType   string  `json:"packet_type"`
 	GPS          struct {
-		Lat   float64 `json:"lat"`
-		Lon   float64 `json:"lon"`
-		AccM  float64 `json:"acc_m"`
+		Lat  float64 `json:"lat"`
+		Lon  float64 `json:"lon"`
+		AccM float64 `json:"acc_m"`
 	} `json:"gps"`
 }
 
@@ -59,6 +67,10 @@ func ParsePayload(topic string, body []byte, ingestedAt string) (Reception, erro
 		SenderKey:    p.SenderKey,
 		SenderKeylen: p.SenderKeylen,
 		SenderRole:   p.SenderRole,
+		SenderKind:   p.SenderKind,
+		SenderID:     p.SenderID,
+		SenderLabel:  p.SenderLabel,
+		ChannelName:  p.ChannelName,
 		IsDirect:     p.IsDirect,
 		Hops:         p.Hops,
 		Lat:          p.GPS.Lat,

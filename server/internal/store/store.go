@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,6 +23,10 @@ CREATE TABLE IF NOT EXISTS hunter_receptions (
   sender_key    TEXT,
   sender_keylen INTEGER,
   sender_role   TEXT,
+  sender_kind   TEXT,
+  sender_id     TEXT,
+  sender_label  TEXT,
+  channel_name  TEXT,
   is_direct     INTEGER NOT NULL,
   hops          INTEGER NOT NULL,
   lat           REAL,
@@ -54,6 +59,12 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
+	for _, col := range []string{"sender_kind", "sender_id", "sender_label", "channel_name"} {
+		if _, err := db.Exec("ALTER TABLE hunter_receptions ADD COLUMN " + col + " TEXT"); err != nil &&
+			!strings.Contains(err.Error(), "duplicate column name") {
+			return nil, err
+		}
+	}
 	return &Store{db: db}, nil
 }
 
@@ -61,10 +72,12 @@ func (s *Store) Insert(r Reception) error {
 	_, err := s.db.Exec(
 		`INSERT INTO hunter_receptions
 		 (hunter_pubkey,hunter_name,rx_at,ingested_at,snr,rssi,raw,packet_type,
-		  sender_key,sender_keylen,sender_role,is_direct,hops,lat,lon,pos_acc_m,mqtt_topic)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  sender_key,sender_keylen,sender_role,sender_kind,sender_id,sender_label,channel_name,
+		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.HunterPubkey, r.HunterName, r.RxAt, r.IngestedAt, r.SNR, r.RSSI, r.Raw, r.PacketType,
-		r.SenderKey, r.SenderKeylen, r.SenderRole, b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic,
+		r.SenderKey, r.SenderKeylen, r.SenderRole, r.SenderKind, r.SenderID, r.SenderLabel, r.ChannelName,
+		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic,
 	)
 	return err
 }
