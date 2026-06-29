@@ -106,15 +106,15 @@ Voorgestelde config-vorm (mobiele app):
 ]
 ```
 
-**Resolutiestrategie (voorstel):** alle resolvers bevragen **in volgorde, eerste eenduidige (niet-ambigue)
-treffer wint** (pubkeys zijn uniek → botsingen onwaarschijnlijk). SF/`label` is een **regiolabel** dat de
-probeervolgorde bepaalt; de resolutie zelf gebeurt op de pubkey, niet op de SF. Cache per key (incl. welke
-resolver antwoordde). Optioneel de regio tonen bij de naam (bv. `NodeX · NL`).
+**Resolutiestrategie (beslist):** de **SF van de companion bepaalt welke resolver eerst wordt gevraagd** (de
+resolver met matchende `sf`), daarna de overige in volgorde; **eerste eenduidige (niet-ambigue) treffer wint**
+(pubkeys zijn uniek → botsingen onwaarschijnlijk). De resolutie gebeurt op de pubkey, niet op de SF; SF/`label`
+dient als regio-aanduiding en bepaalt de probeervolgorde. Cache per key (incl. welke resolver antwoordde).
+Vereist dat de app de **SF van de companion** kent (uit de companion-info; firmware-/companion-afhankelijk).
 
 **Open punten:**
-- Regio tonen bij de naam: ja/nee?
-- Eventueel de actieve regio automatisch afleiden uit de companion (SF), zodat die resolver eerst gevraagd
-  wordt — firmware-/companion-afhankelijk, mogelijk later.
+- Regio tonen bij de naam (bv. `NodeX · NL`): ja/nee?
+- Fallback wanneer de companion-SF onbekend is: dan gewoon de configvolgorde aanhouden.
 
 > Raakt het bestaande `names.js` / `resolveUrl` (nu één endpoint, client-side). Iter 2: meerdere endpoints,
 > zowel in de mobiele app-config als server-side voor de web-app.
@@ -128,8 +128,10 @@ daardoor minder geschikt als afstandsindicator.
 **Beslist (gebruiker, 2026-06-29):**
 - **Default signaalmaat = RSSI**, zowel in de app als op de website. SNR blijft **opgeslagen** (en mag
   getoond worden), maar de kleur/heatmap gaat standaard op RSSI.
-- **App: vaste RSSI-schaal (dBm-banden)** — niet auto-geschaald. Voorbeeldbanden (drempels nog in het veld
-  af te stemmen): `≥ −80` heet · `−80…−90` warm · `−90…−100` mid · `−100…−110` koel · `< −110` koud.
+- **App: vaste RSSI-schaal (dBm-banden)** — niet auto-geschaald. **Eén gedeelde default-schaal, voor iedereen
+  hetzelfde**, die optioneel **per toestel bijgesteld kan worden met een gekalibreerde waarde** (offset of
+  eigen drempels in de config). Voorbeeld-default (nog af te stemmen): `≥ −80` heet · `−80…−90` warm ·
+  `−90…−100` mid · `−100…−110` koel · `< −110` koud.
 - **Website: elke hunter op zijn eigen relatieve schaal** bij het bundelen — vangt de per-toestel-offsets op
   (antenne-gain, kabel-/connectorverlies, RSSI-kalibratie) zonder expliciete kalibratie.
 
@@ -143,10 +145,10 @@ daardoor minder geschikt als afstandsindicator.
 toe en de kaart/HUD/heatmap kleuren standaard op RSSI. De thermische ramp (`--ch-sig-*`) blijft hergebruikt.
 Website: per-hunter relatieve normalisatie vóór het mergen.
 
-**Kalibratie / field-test (vastgelegd):** omdat RSSI een per-toestel-offset heeft, verschillen de "juiste"
-vaste dBm-drempels licht per companion-type. Bij de field-test **noteren met welke radio gekalibreerd wordt**;
-mogelijk per-companion-type-varianten van de banden voorzien (of een per-toestel-offset/kalibratiewaarde in de
-config). Te bepalen aan de hand van veldmetingen.
+**Kalibratie / field-test (beslist):** er is **één gedeelde default-schaal voor iedereen**; per toestel kan
+optioneel een **gekalibreerde waarde** (offset of eigen drempels in de config) worden gezet die de default
+overschrijft. Omdat RSSI een per-toestel-offset heeft, bij de field-test **noteren met welke radio
+gekalibreerd wordt**; de concrete default-drempels worden aan de hand van veldmetingen bepaald.
 
 ## Website / online backend (latere iteratie — scope-aanvulling)
 
