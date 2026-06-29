@@ -14,5 +14,6 @@ public/config.json
 .DS_Store
 Thumbs.db
 
-# local agent context (kept locally, not published)
+# local-only notes (kept locally, not published)
 CLAUDE.md
+HANDOVER.md
