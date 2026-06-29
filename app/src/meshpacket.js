@@ -96,19 +96,13 @@ export function classifyReception(direction, pkt) {
   const packetType = PACKET_TYPE(pkt)
   let senderKey = null, senderKeylen = 0, src = null
 
-  if (direction === 'rx' && pkt.payloadType !== PAYLOAD_TYPE_TRACE) {
-    if (isFloodRoute(pkt.routeType) && hops > 0) {
-      senderKey = pkt.hops[pkt.hops.length - 1]
-      senderKeylen = senderKey.length / 2   // 1-byte (keylen 1) now allowed
-      src = 'rxlog'
-    } else if (pkt.isAdvert && pkt.advertPubkey) {
-      senderKey = pkt.advertPubkey
-      senderKeylen = senderKey.length / 2
-      src = 'advert'
+  // iteration 2: only zero-hop (direct) packets are attributed.
+  // Relayed packets (hops > 0) describe the last repeater, not the target — dropped.
+  if (direction === 'rx' && isDirect && pkt.payloadType !== PAYLOAD_TYPE_TRACE) {
+    if (pkt.isAdvert && pkt.advertPubkey) {
+      senderKey = pkt.advertPubkey; senderKeylen = senderKey.length / 2; src = 'advert'
     } else if (pkt.isDiscoverResp && pkt.discoverPubkey) {
-      senderKey = pkt.discoverPubkey
-      senderKeylen = senderKey.length / 2
-      src = 'discover'
+      senderKey = pkt.discoverPubkey; senderKeylen = senderKey.length / 2; src = 'discover'
     }
   }
   return { senderKey, senderKeylen, src, hops, isDirect, packetType }

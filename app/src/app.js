@@ -13,7 +13,7 @@
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { parsePacket, classifyReception } from './meshpacket.js'
-import { buildRecord } from './capture.js'
+import { buildRecord, shouldCapture } from './capture.js'
 import { Queue } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
@@ -89,6 +89,7 @@ async function processFrame(dv) {
   if (!pkt) return
 
   const cls = classifyReception('rx', pkt)
+  if (!shouldCapture(cls)) return   // iteration 2: only zero-hop is captured/queued/published
 
   const fix = state.gps.latest()
   if (!fix) return // no GPS fix → drop (coverage without position is useless)

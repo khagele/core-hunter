@@ -6,11 +6,11 @@ const pkt = (over) => ({ routeType: 1, payloadType: 0, isAdvert: false, hops: []
   advertPubkey: null, isDiscoverResp: false, discoverPubkey: null, ...over })
 
 describe('classifyReception', () => {
-  it('keeps a 1-byte path-hash sender (NOT dropped like CoreDrive RX)', () => {
+  it('relayed packet is not attributed (1-byte axis dropped)', () => {
     const c = classifyReception('rx', pkt({ routeType: 1, hops: ['a1'] }))
-    expect(c.senderKey).toBe('a1')
-    expect(c.senderKeylen).toBe(1)
-    expect(c.src).toBe('rxlog')
+    expect(c.senderKey).toBeNull()
+    expect(c.senderKeylen).toBe(0)
+    expect(c.src).toBeNull()
     expect(c.hops).toBe(1)
     expect(c.isDirect).toBe(false)
   })
@@ -32,10 +32,10 @@ describe('classifyReception', () => {
     expect(c.packetType).toBe('channel-msg')
   })
 
-  it('returns hops count from path length for relayed packets', () => {
+  it('returns hops count from path length for relayed packets, sender unattributed', () => {
     const c = classifyReception('rx', pkt({ routeType: 1, hops: ['a1', 'b2', 'c3'] }))
     expect(c.hops).toBe(3)
     expect(c.isDirect).toBe(false)
-    expect(c.senderKey).toBe('c3')
+    expect(c.senderKey).toBeNull()
   })
 })

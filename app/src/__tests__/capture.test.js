@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildRecord } from '../capture.js'
+import { buildRecord, shouldCapture } from '../capture.js'
 
 describe('buildRecord', () => {
   it('flattens frame + classification + gps into a queue record', () => {
@@ -12,5 +12,15 @@ describe('buildRecord', () => {
       lat: 51.0, lon: 4.0, acc_m: 8, sender_key: 'a1', sender_keylen: 1,
       sender_role: null, is_direct: true, hops: 0, packet_type: 'channel-msg',
     })
+  })
+})
+
+describe('shouldCapture', () => {
+  it('returns true for a direct (zero-hop) classification', () => {
+    expect(shouldCapture({ isDirect: true })).toBe(true)
+  })
+
+  it('returns false for a relayed (non-zero-hop) classification', () => {
+    expect(shouldCapture({ isDirect: false })).toBe(false)
   })
 })
