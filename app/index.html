@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>core-hunter</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/app.css" />
+</head>
+<body>
+  <div id="map"></div>
+  <header id="topbar">
+    <span id="target-chip">No target</span>
+    <span id="status-dots"><i id="dot-ble"></i><i id="dot-mqtt"></i></span>
+  </header>
+  <section id="hud">
+    <div id="hud-snr">—</div>
+    <div id="hud-rssi">—</div>
+    <span id="hud-hop">hop —</span>
+    <div id="hud-bar"><div id="hud-bar-fill"></div></div>
+    <button id="connect-btn">Connect</button>
+  </section>
+  <button id="layer-toggle" aria-label="Toggle layers">◑</button>
+  <button id="filter-btn" aria-label="Filters">⚲</button>
+  <aside id="filter-sheet" hidden></aside>
+  <aside id="settings-sheet" hidden></aside>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

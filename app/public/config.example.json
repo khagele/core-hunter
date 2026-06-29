@@ -1,0 +1,6 @@
+{
+  "mqttUrl": "wss://broker.example:8084/ws",
+  "mqttUsername": "core-hunter",
+  "mqttPassword": "<publish-only EMQX account>",
+  "resolveUrl": "https://corescope.example/api/nodes/resolve"
+}
