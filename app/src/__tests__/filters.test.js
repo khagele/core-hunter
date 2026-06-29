@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { makeFilter } from '../filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER } from '../filters.js'
 
 const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true,
   rx_at: '2026-06-29T10:00:00Z', ...o })
@@ -26,5 +26,30 @@ describe('makeFilter', () => {
     const f = makeFilter({ sender: null, types: new Set(['GroupText']), windowMs: null, directOnly: false, ignore: null })
     expect(f({ sender_id: 'x', packet_type: 'GroupText', is_direct: true, rx_at: '2026-06-29T10:00:00Z' }, Date.parse('2026-06-29T10:01:00Z'))).toBe(true)
     expect(f({ sender_id: 'x', packet_type: 'Response', is_direct: true, rx_at: '2026-06-29T10:00:00Z' }, Date.parse('2026-06-29T10:01:00Z'))).toBe(false)
+  })
+})
+
+describe('isFilterActive', () => {
+  it('the default filter is not active', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER })).toBe(false)
+  })
+  it('an isolated sender is active', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, sender: { key: 'aa', keylen: 1 } })).toBe(true)
+  })
+  it('turning direct-only off is active', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, directOnly: false })).toBe(true)
+  })
+  it('a non-default time window is active (including all-time)', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, windowMs: 3600000 })).toBe(true)
+    expect(isFilterActive({ ...DEFAULT_FILTER, windowMs: null })).toBe(true)
+  })
+  it('a non-empty type set is active; an empty/null set is not', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, types: new Set(['advert']) })).toBe(true)
+    expect(isFilterActive({ ...DEFAULT_FILTER, types: new Set() })).toBe(false)
+    expect(isFilterActive({ ...DEFAULT_FILTER, types: null })).toBe(false)
+  })
+  it('is false for a null/undefined filter', () => {
+    expect(isFilterActive(null)).toBe(false)
+    expect(isFilterActive(undefined)).toBe(false)
   })
 })
