@@ -21,7 +21,7 @@ import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
-import { makeFilter } from './filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
@@ -82,12 +82,7 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   manualFix: loadManualFix(),
-  filter: {
-    sender: null,
-    types: null,
-    windowMs: 10 * 60 * 1000,
-    directOnly: true,
-  },
+  filter: { ...DEFAULT_FILTER },
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +128,12 @@ function setDot(id, on) {
   const d = el(id)
   if (on) d.classList.add('on')
   else d.classList.remove('on')
+}
+
+// Light the filter button's badge when the current filter differs from the
+// default (closed-sheet signal). Called wherever state.filter changes.
+function refreshFilterIndicator() {
+  el('filter-btn').classList.toggle('active', isFilterActive(state.filter))
 }
 
 // ---------------------------------------------------------------------------
@@ -340,12 +341,12 @@ function buildFilterSheet() {
   sheet.innerHTML = `
     <div class="filter-sheet-inner">
       <h2>Filters</h2>
-      <label>
+      <label class="fs-row">
+        <span>Direct only</span>
         <input type="checkbox" id="fs-direct-only" />
-        Direct only
       </label>
-      <label>
-        Window
+      <label class="fs-row">
+        <span>Plot last:</span>
         <select id="fs-window">
           <option value="600000">10 min</option>
           <option value="1800000">30 min</option>
@@ -356,6 +357,7 @@ function buildFilterSheet() {
       <div class="fs-type-row">
         <span class="fs-type-label">Types</span>
         <div id="fs-type-chips" class="fs-type-chips">
+          <button class="fs-chip active" data-type="all">All</button>
           ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
         </div>
       </div>
@@ -368,17 +370,36 @@ function buildFilterSheet() {
   chk.checked = state.filter.directOnly
   sel.value = String(state.filter.windowMs)
 
-  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked })
-  sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null })
+  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; refreshFilterIndicator() })
+  sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null; refreshFilterIndicator() })
 
-  // Type chips — clicking a chip toggles it; when nothing is selected, types → null
+  // Type chips — the "All" chip (default) means no type filter. Picking a
+  // specific type turns All off; clearing the last specific turns All back on.
   el('fs-type-chips').addEventListener('click', (e) => {
     const chip = e.target.closest('.fs-chip')
     if (!chip) return
-    chip.classList.toggle('active')
-    const selected = [...el('fs-type-chips').querySelectorAll('.fs-chip.active')]
+    const chips = el('fs-type-chips')
+    const allChip = chips.querySelector('.fs-chip[data-type="all"]')
+
+    if (chip === allChip) {
+      if (allChip.classList.contains('active')) return // already showing all — no-op
+      allChip.classList.add('active')
+      chips.querySelectorAll('.fs-chip:not([data-type="all"]).active').forEach(c => c.classList.remove('active'))
+    } else {
+      chip.classList.toggle('active')
+      allChip.classList.remove('active')
+    }
+
+    const selected = [...chips.querySelectorAll('.fs-chip.active')]
       .map(c => c.dataset.type)
-    state.filter.types = selected.length > 0 ? new Set(selected) : null
+      .filter(t => t !== 'all')
+    if (selected.length === 0) {
+      allChip.classList.add('active')   // nothing specific → fall back to All
+      state.filter.types = null
+    } else {
+      state.filter.types = new Set(selected)
+    }
+    refreshFilterIndicator()
   })
 
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
@@ -541,6 +562,7 @@ document.addEventListener('hunt:isolate-sender', (e) => {
     chip.textContent = 'No target'
     chip.classList.remove('active')
   }
+  refreshFilterIndicator()
 })
 
 // ---------------------------------------------------------------------------
@@ -628,6 +650,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: null }))
     }
   })
+
+  // Reflect the initial filter state on the button (inactive at default)
+  refreshFilterIndicator()
 
   // Start background loops
   renderTick()
