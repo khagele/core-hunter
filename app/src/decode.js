@@ -20,7 +20,11 @@ export function initDecoder(channelKeys) {
 }
 
 export function decodePacket(rawHex) {
-  return MeshCoreDecoder.decode(rawHex, keyStore ? { keyStore } : {})
+  try {
+    return MeshCoreDecoder.decode(rawHex, keyStore ? { keyStore } : {})
+  } catch (e) {
+    return null
+  }
 }
 
 export function channelNameFor(channelHash) {

@@ -24,4 +24,8 @@ describe('decode', () => {
   it('bytesToHex round-trips', () => {
     expect(bytesToHex(new Uint8Array([0xde, 0xad]))).toBe('dead')
   })
+  it('returns null on a malformed packet instead of throwing', () => {
+    initDecoder({ public: '8b3387e9c5cdea6ac9e5edbaa115cd72' })
+    expect(decodePacket('zz')).toBeNull()
+  })
 })

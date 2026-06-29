@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@michaelhart/meshcore-decoder": "^0.3.0",
+    "crypto-js": "^4.2.0",
     "mqtt": "^5.10.1"
   },
   "devDependencies": {
