@@ -93,15 +93,31 @@ Omdat ignore (en de weergave) op de **volledige pubkey** werkt, willen we die pu
 **Beslist (gebruiker, 2026-06-29):**
 - Pubkey → naam via een **API-connectie naar CoreScope-omgeving(en)**; **meerdere omgevingen mogelijk**
   (de naam kan in verschillende CoreScope-instanties bekend zijn).
-- Configuratie via een **config-bestand, server-side voor de web-app** (lijst van CoreScope-resolver-endpoints),
-  i.p.v. één hard-coded `resolveUrl`.
+- **Ook in de mobiele app** (niet enkel server-side voor de web-app): een **lijst van resolvers** in de
+  app-`config.json`, elk met een regio-/SF-label. Concreet voorbeeld: één resolver voor **België (SF8)** en
+  één voor **Nederland (SF7)**.
+- Terugwaarts compatibel: een losse `resolveUrl` blijft werken (= één naamloze resolver).
+
+Voorgestelde config-vorm (mobiele app):
+```json
+"resolvers": [
+  { "label": "BE", "sf": 8, "url": "https://corescope-be.example/api/nodes/resolve" },
+  { "label": "NL", "sf": 7, "url": "https://corescope-nl.example/api/nodes/resolve" }
+]
+```
+
+**Resolutiestrategie (voorstel):** alle resolvers bevragen **in volgorde, eerste eenduidige (niet-ambigue)
+treffer wint** (pubkeys zijn uniek → botsingen onwaarschijnlijk). SF/`label` is een **regiolabel** dat de
+probeervolgorde bepaalt; de resolutie zelf gebeurt op de pubkey, niet op de SF. Cache per key (incl. welke
+resolver antwoordde). Optioneel de regio tonen bij de naam (bv. `NodeX · NL`).
 
 **Open punten:**
-- Volgorde/merge-strategie als meerdere omgevingen dezelfde pubkey kennen (eerste hit, of voorkeursvolgorde?).
-- Caching van resolves (de pubkey's zijn stabiel; namen wijzigen zelden).
+- Regio tonen bij de naam: ja/nee?
+- Eventueel de actieve regio automatisch afleiden uit de companion (SF), zodat die resolver eerst gevraagd
+  wordt — firmware-/companion-afhankelijk, mogelijk later.
 
 > Raakt het bestaande `names.js` / `resolveUrl` (nu één endpoint, client-side). Iter 2: meerdere endpoints,
-> server-side geconfigureerd.
+> zowel in de mobiele app-config als server-side voor de web-app.
 
 ## Website / online backend (latere iteratie — scope-aanvulling)
 

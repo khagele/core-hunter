@@ -16,6 +16,20 @@ Receptions are stored locally in IndexedDB and published to an MQTT broker
 so the server-side Go ingestor (`server/`) can aggregate observations from
 multiple hunters in the field.
 
+## Status & direction
+
+**Built (iteration 1):** BLE scanner → capture → IndexedDB → live thermal map
+(points + hex-heat) → MQTT drain. Unit-tested; pending field verification.
+
+> **Iteration 2 (in review — [`../docs/2026-06-29-iteration-2-proposals.md`](../docs/2026-06-29-iteration-2-proposals.md)).**
+> The design is narrowing to **zero-hop only**: only what the hunter hears
+> *directly* tells you where a transmitter is, so relayed (>0-hop) traffic — and
+> with it the 1-byte attribution axis — is dropped from logging, publishing, and
+> the map. An **ignore-list** (mute known stations such as repeaters so they
+> don't form false hotspots) and **multiple regional name resolvers** (e.g.
+> BE/SF8, NL/SF7) are added. Sections below marked _(iter-1 — changing)_ describe
+> current behaviour that iteration 2 revises.
+
 ## Build and run
 
 ```
@@ -67,35 +81,42 @@ cp public/config.example.json public/config.json
 
 `config.json` is gitignored; never commit credentials.
 
-## The capture rule — what makes this different from CoreDrive RX
+> _(iter-2 — in review.)_ The single `resolveUrl` becomes a `resolvers` array of
+> multiple regional CoreScope endpoints, each with a label/spreading-factor, e.g.
+> `{ "label": "BE", "sf": 8, "url": "…" }` and `{ "label": "NL", "sf": 7, "url": "…" }`.
+> Resolvers are tried in order; the first unambiguous hit wins. `resolveUrl`
+> stays supported as a single resolver. See the proposals doc.
 
-- **1-byte sender prefixes are kept.** They are never dropped for "weak
-  attribution." A one-byte key is treated as a short key (`sender_keylen = 1`),
-  not discarded.
-- **`is_direct = (hops === 0)`** — the flag is set only for zero-hop
-  receptions; relayed traffic is always marked indirect regardless of signal
-  strength.
-- **Hop-count is the primary direction-finding gradient.** 0-hop means the
-  radio heard the target's transmission with no relay in between; that is the
-  strongest spatial signal.
-- **Everything heard is published to MQTT** (`meshcore/hunter/{rxPubkey}/packets`,
-  QoS 1). The direct-only / show-all toggle and the other filters in the UI
-  affect only the **local map view** — they do not gate what is published.
-  The backend receives all receptions and deduplicates.
-- **Unattributed 0-hop packets are plotted.** A companion that never
-  advertises can still be found via its traffic and its signal strength.
+## The capture rule
+
+- **`is_direct = (hops === 0)`.** Only zero-hop receptions — where the radio
+  heard the transmitter directly — point at where that transmitter actually is.
+  A relayed packet's SNR/RSSI describes the *last repeater*, not the target.
+- **Unattributed 0-hop packets are plotted.** A companion that never advertises
+  has no pubkey on its data packets (`sender_key = null`); it is still plotted by
+  signal, which is exactly how you find it.
+- **Published to MQTT** on `meshcore/hunter/{rxPubkey}/packets` (QoS 1). UI
+  filters affect only the **local map view**, not what is published; the backend
+  deduplicates.
+
+> _(iter-1 — changing.)_ The shipped code currently **also keeps relayed
+> (>0-hop) receptions and 1-byte sender prefixes** (`sender_keylen = 1`) and
+> publishes them too, treating hop-count as a gradient. **Iteration 2 removes
+> this:** only zero-hop is logged, published, and plotted, and the 1-byte
+> attribution axis is dropped (zero-hop senders are either a full advert pubkey
+> or `null`). See the proposals doc.
 
 ## Thermal map semantics
 
 The colour ramp runs **cold (blue) → hot (red)** for **weak (far) →
 strong (close)**.
 
-- **0-hop (direct) points** are drawn with an accent ring to distinguish
-  them from relayed observations.
-- **Relayed points** are rendered faded/smaller.
-- Two map layers are available: individual **signal points** (hop-aware
-  colour + ring) and a **hex-heat** aggregate layer. Toggle between them
-  with the layer button in the map controls.
+- **0-hop (direct) points** are drawn with an accent ring.
+- **Relayed points** are currently rendered faded/smaller _(iter-1 — removed in
+  iteration 2: relayed traffic is no longer plotted at all)_.
+- Two map layers are available: individual **signal points** (tier colour +
+  ring) and a **hex-heat** aggregate layer. Toggle between them with the layer
+  button in the map controls.
 
 ## Resilience
 
@@ -116,7 +137,7 @@ MeshCore firmware source. The field will never contain a guessed value.
 
 ## Position disclaimer
 
-Position is inferred from **radio measurements** (SNR, RSSI, hop-count) via
+Position is inferred from **radio measurements** (SNR, RSSI) via
 mesh topology, not from GPS tracking of the target node. The GPS coordinates
 stored with each reception are the **hunter phone's own position** at the
 moment of reception. The map shows where *you* were when you heard the
