@@ -79,6 +79,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .fs-row { display: flex; align-items: center; gap: 8px;
   margin: 8px 0; font-size: 14px; color: var(--ch-text); }
 
+/* Overlay sheet header: title left, themed X close right */
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sheet-head h2 { margin: 0; }
+.sheet-close { border: none; background: transparent; color: var(--ch-muted); cursor: pointer;
+  padding: 4px; display: flex; align-items: center; }
+.sheet-close:hover { color: var(--ch-text); }
+
 .fs-type-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .fs-type-label { font-size: 14px; color: var(--ch-muted); white-space: nowrap; }
 .fs-type-chips { display: flex; flex-wrap: wrap; gap: 6px; }

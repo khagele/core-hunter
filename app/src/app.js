@@ -368,7 +368,14 @@ function buildFilterSheet() {
   const sheet = el('filter-sheet')
   sheet.innerHTML = `
     <div class="filter-sheet-inner">
-      <h2>Filters</h2>
+      <div class="sheet-head">
+        <h2>Filters</h2>
+        <button class="sheet-close" id="fs-close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
       <label class="fs-row">
         <span>Direct only</span>
         <input type="checkbox" id="fs-direct-only" />
@@ -389,7 +396,6 @@ function buildFilterSheet() {
           ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
         </div>
       </div>
-      <button id="fs-close">Done</button>
     </div>`
 
   const chk = el('fs-direct-only')
@@ -475,7 +481,14 @@ function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
     <div class="settings-sheet-inner">
-      <h2>Settings</h2>
+      <div class="sheet-head">
+        <h2>Settings</h2>
+        <button class="sheet-close" id="ss-close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
       <div class="ss-conn-section">
         <h3>Connection</h3>
         <dl class="ss-conn-status">
@@ -515,7 +528,6 @@ function buildSettingsSheet() {
         <p id="ss-manfix-status" class="ss-manfix-status"></p>
       </div>
       <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
-      <button id="ss-close">Done</button>
     </div>`
 
   el('ss-disconnect').addEventListener('click', () => {
