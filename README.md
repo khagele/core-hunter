@@ -18,8 +18,20 @@ done in the `Spammer` project.
 
 ## Status
 
-Fresh scaffold. Architecture of both source codebases is being mapped to identify the exact reusable
-modules; `CLAUDE.md` will be filled with the concrete building blocks + access details.
+- **Phase A — Go MQTT ingestor (`server/`):** complete. Subscribes to
+  `meshcore/hunter/+/packets`, validates and stores every reception with no
+  purge. Unit-tested.
+- **Phase B — mobile hunter PWA (`app/`):** implemented. BLE scanner,
+  live thermal hunt map (thermal points + hex-heat), IndexedDB persistence,
+  MQTT drain. Pending field verification with hardware and deploy of the
+  ingestor.
+
+## Components
+
+| Directory | Description |
+|---|---|
+| [`server/`](server/) | Go MQTT ingestor — subscribes to `meshcore/hunter/+/packets`, stores every reception |
+| [`app/`](app/) | Mobile hunter PWA — BLE scanner + live thermal hunt map; see [`app/README.md`](app/README.md) |
 
 ## Related projects (siblings under `./`)
 
