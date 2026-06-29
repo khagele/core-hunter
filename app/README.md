@@ -27,8 +27,10 @@ multiple hunters in the field.
 > with it the 1-byte attribution axis — is dropped from logging, publishing, and
 > the map. An **ignore-list** (mute known stations such as repeaters so they
 > don't form false hotspots) and **multiple regional name resolvers** (e.g.
-> BE/SF8, NL/SF7) are added. Sections below marked _(iter-1 — changing)_ describe
-> current behaviour that iteration 2 revises.
+> BE/SF8, NL/SF7) are added. The default signal metric for colour/heat becomes
+> **RSSI** (fixed dBm bands in the app; each hunter on its own relative scale on
+> the website), with SNR still stored. Sections below marked _(iter-1 — changing)_
+> describe current behaviour that iteration 2 revises.
 
 ## Build and run
 

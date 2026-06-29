@@ -119,12 +119,38 @@ resolver antwoordde). Optioneel de regio tonen bij de naam (bv. `NodeX · NL`).
 > Raakt het bestaande `names.js` / `resolveUrl` (nu één endpoint, client-side). Iter 2: meerdere endpoints,
 > zowel in de mobiele app-config als server-side voor de web-app.
 
+## Voorstel NIEUW — Signaalmaat: RSSI als default
+
+**Aanleiding:** voor peilen wil je een zuivere **nabijheids-/vermogensmaat**. RSSI ≈ ontvangen vermogen
+(vooral padverlies → afstand). SNR vermengt het signaal met de **lokale ruisvloer** van de companion en is
+daardoor minder geschikt als afstandsindicator.
+
+**Beslist (gebruiker, 2026-06-29):**
+- **Default signaalmaat = RSSI**, zowel in de app als op de website. SNR blijft **opgeslagen** (en mag
+  getoond worden), maar de kleur/heatmap gaat standaard op RSSI.
+- **App: vaste RSSI-schaal (dBm-banden)** — niet auto-geschaald. Voorbeeldbanden (drempels nog in het veld
+  af te stemmen): `≥ −80` heet · `−80…−90` warm · `−90…−100` mid · `−100…−110` koel · `< −110` koud.
+- **Website: elke hunter op zijn eigen relatieve schaal** bij het bundelen — vangt de per-toestel-offsets op
+  (antenne-gain, kabel-/connectorverlies, RSSI-kalibratie) zonder expliciete kalibratie.
+
+**Caveats (vastgelegd):**
+- RSSI heeft **per-toestel-offsets** → absolute waarden van verschillende companions zijn niet 1-op-1
+  vergelijkbaar (vandaar de relatieve website-schaal).
+- Onder de ruisvloer (negatieve SNR) berekent de LoRa-chip de packet-RSSI mede *uit* de SNR → daar zijn de
+  twee gekoppeld. Exacte RSSI-semantiek is chip-/firmware-afhankelijk (verifiëren indien het precies moet).
+
+**Impact op code:** `signal.js` kleurt nu op SNR (`snrTier`); iter-2 voegt `rssiTier(rssi)` met vaste banden
+toe en de kaart/HUD/heatmap kleuren standaard op RSSI. De thermische ramp (`--ch-sig-*`) blijft hergebruikt.
+Website: per-hunter relatieve normalisatie vóór het mergen.
+
 ## Website / online backend (latere iteratie — scope-aanvulling)
 
 De website bundelt de zero-hop observaties van **alle hunters** tot één heatmap om een doel te lokaliseren
 (conform het oorspronkelijke uitgangspunt). Nieuw t.o.v. iter 1: de **negeerlijst moet ook hier werken** —
 server-side stations uitsluiten bij het opbouwen van de gebundelde heatmap/coverage. Dit vergt de query-API /
 GeoJSON-endpoints die al als "latere iteratie" genoteerd stonden; ignore wordt daar een queryparameter.
+Signaalmaat = **RSSI**, met **elke hunter op zijn eigen relatieve schaal** vóór het mergen (zie de
+Signaalmaat-sectie) om per-toestel-offsets op te vangen.
 
 ## Geraakte eerdere beslissingen / requirements (gevolg van het zero-hop-principe)
 
