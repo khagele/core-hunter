@@ -112,8 +112,9 @@ resolver met matchende `sf`), daarna de overige in volgorde; **eerste eenduidige
 dient als regio-aanduiding en bepaalt de probeervolgorde. Cache per key (incl. welke resolver antwoordde).
 Vereist dat de app de **SF van de companion** kent (uit de companion-info; firmware-/companion-afhankelijk).
 
+**Beslist:** de regio **niet** bij de naam tonen (gewoon de resolved naam, bv. `NodeX`).
+
 **Open punten:**
-- Regio tonen bij de naam (bv. `NodeX · NL`): ja/nee?
 - Fallback wanneer de companion-SF onbekend is: dan gewoon de configvolgorde aanhouden.
 
 > Raakt het bestaande `names.js` / `resolveUrl` (nu één endpoint, client-side). Iter 2: meerdere endpoints,
