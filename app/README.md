@@ -8,29 +8,19 @@ toward a target node.
 
 core-hunter is the mobile **hunter** side of the core-hunter system. The
 phone pairs over BLE to a companion MeshCore radio, captures every packet
-the radio hears (with SNR, RSSI, hop-count, and the phone's own GPS fix),
-and renders them as a heat-map where **hot = strong = close**. Drive toward
-the heat to home in on the target.
+the radio hears directly (zero-hop, with SNR, RSSI, and the phone's own GPS
+fix), and renders them as a heat-map where **hot = strong = close**. Drive
+toward the heat to home in on the target.
 
 Receptions are stored locally in IndexedDB and published to an MQTT broker
 so the server-side Go ingestor (`server/`) can aggregate observations from
 multiple hunters in the field.
 
-## Status & direction
+## Status
 
-**Built (iteration 1):** BLE scanner → capture → IndexedDB → live thermal map
-(points + hex-heat) → MQTT drain. Unit-tested; pending field verification.
-
-> **Iteration 2 (in review — [`../docs/2026-06-29-iteration-2-proposals.md`](../docs/2026-06-29-iteration-2-proposals.md)).**
-> The design is narrowing to **zero-hop only**: only what the hunter hears
-> *directly* tells you where a transmitter is, so relayed (>0-hop) traffic — and
-> with it the 1-byte attribution axis — is dropped from logging, publishing, and
-> the map. An **ignore-list** (mute known stations such as repeaters so they
-> don't form false hotspots) and **multiple regional name resolvers** (e.g.
-> BE/SF8, NL/SF7) are added. The default signal metric for colour/heat becomes
-> **RSSI** (fixed dBm bands in the app; each hunter on its own relative scale on
-> the website), with SNR still stored. Sections below marked _(iter-1 — changing)_
-> describe current behaviour that iteration 2 revises.
+Phase A + B built; iteration-2 capture/visualization changes implemented
+(zero-hop only, RSSI metric, ignore-list, multi-resolver). Pending field
+verification with hardware and deploy of the ingestor.
 
 ## Build and run
 
@@ -79,46 +69,62 @@ cp public/config.example.json public/config.json
 | `mqttUrl` | yes | WSS URL of your EMQX broker, e.g. `wss://broker.example.com:8084/mqtt` |
 | `mqttUsername` | yes | Publish-only EMQX account username |
 | `mqttPassword` | yes | Publish-only EMQX account password |
-| `resolveUrl` | no | CoreScope name-resolver endpoint — used to display human-readable node names |
+| `resolvers` | no | Array of `{ label, sf, url }` regional CoreScope name-resolver endpoints (back-compat: a single `resolveUrl` string also works) |
+| `rssiCalibrationOffset` | no | dBm offset added to every raw RSSI before band assignment (default: 0) |
 
 `config.json` is gitignored; never commit credentials.
-
-> _(iter-2 — in review.)_ The single `resolveUrl` becomes a `resolvers` array of
-> multiple regional CoreScope endpoints, each with a label/spreading-factor, e.g.
-> `{ "label": "BE", "sf": 8, "url": "…" }` and `{ "label": "NL", "sf": 7, "url": "…" }`.
-> Resolvers are tried in order; the first unambiguous hit wins. `resolveUrl`
-> stays supported as a single resolver. See the proposals doc.
 
 ## The capture rule
 
 - **`is_direct = (hops === 0)`.** Only zero-hop receptions — where the radio
   heard the transmitter directly — point at where that transmitter actually is.
   A relayed packet's SNR/RSSI describes the *last repeater*, not the target.
+  Relayed traffic (hops > 0) is dropped: not logged, not published, not plotted.
 - **Unattributed 0-hop packets are plotted.** A companion that never advertises
   has no pubkey on its data packets (`sender_key = null`); it is still plotted by
-  signal, which is exactly how you find it.
-- **Published to MQTT** on `meshcore/hunter/{rxPubkey}/packets` (QoS 1). UI
-  filters affect only the **local map view**, not what is published; the backend
+  signal, which is exactly how you find it. Zero-hop senders are either a full
+  advert/discover pubkey or `null`.
+- **Published to MQTT** on `meshcore/hunter/{rxPubkey}/packets` (QoS 1).
+  Everything captured (all zero-hop receptions) is published. UI filters
+  affect only the **local map view**, not what is published; the backend
   deduplicates.
-
-> _(iter-1 — changing.)_ The shipped code currently **also keeps relayed
-> (>0-hop) receptions and 1-byte sender prefixes** (`sender_keylen = 1`) and
-> publishes them too, treating hop-count as a gradient. **Iteration 2 removes
-> this:** only zero-hop is logged, published, and plotted, and the 1-byte
-> attribution axis is dropped (zero-hop senders are either a full advert pubkey
-> or `null`). See the proposals doc.
 
 ## Thermal map semantics
 
 The colour ramp runs **cold (blue) → hot (red)** for **weak (far) →
-strong (close)**.
+strong (close)**. Colour and heat are driven by **RSSI** using fixed dBm bands:
 
-- **0-hop (direct) points** are drawn with an accent ring.
-- **Relayed points** are currently rendered faded/smaller _(iter-1 — removed in
-  iteration 2: relayed traffic is no longer plotted at all)_.
-- Two map layers are available: individual **signal points** (tier colour +
-  ring) and a **hex-heat** aggregate layer. Toggle between them with the layer
-  button in the map controls.
+| Band | Range | Colour |
+|---|---|---|
+| Hot | >= -80 dBm | red |
+| Warm | -80 to -90 dBm | orange |
+| Mid | -90 to -100 dBm | yellow |
+| Cool | -100 to -110 dBm | cyan |
+| Cold | < -110 dBm | blue |
+
+An optional `rssiCalibrationOffset` (dBm) in config shifts every raw RSSI
+value before band assignment. SNR is still stored and shown as a number.
+
+All plotted points are zero-hop (no direct/relayed distinction). Two map
+layers are available: individual **signal points** and a **hex-heat**
+aggregate layer. Toggle between them with the layer button in the map controls.
+
+## Ignore-list
+
+Known stations (e.g. repeaters) that should not form false hotspots can be
+muted via the **ignore-list**. Open the popup for a point and press
+"Ignore this ID" to add it. Ignored stations are hidden from the map but
+their receptions are still stored and published. The list is managed in the
+settings sheet and persisted in localStorage.
+
+## Name resolution
+
+Resolvers in `config.json` are tried in config order; the first unambiguous
+hit wins. Providing multiple resolvers (e.g. one per region/spreading-factor)
+allows coverage across different network segments. SF-ordered resolver
+preference is firmware-gated (the companion's SF is not yet readable) and
+falls back to config order. The resolver region label is not shown next to
+the resolved name.
 
 ## Resilience
 
@@ -133,14 +139,15 @@ rows**. The local IndexedDB is the working set; the backend deduplicates by
 ## sender_role
 
 `sender_role` is plumbed end-to-end through the capture record, the MQTT
-payload, and the ingestor schema, but it is always `null` in iteration 1.
-Advert-role decoding is deferred until the byte layout can be confirmed from
-MeshCore firmware source. The field will never contain a guessed value.
+payload, and the ingestor schema, but it is always `null` in the current
+build. Advert-role decoding is deferred until the byte layout can be
+confirmed from MeshCore firmware source. The field will never contain a
+guessed value.
 
 ## Position disclaimer
 
-Position is inferred from **radio measurements** (SNR, RSSI) via
-mesh topology, not from GPS tracking of the target node. The GPS coordinates
+Position is inferred from **radio measurements** (RSSI, SNR) via
+direct reception, not from GPS tracking of the target node. The GPS coordinates
 stored with each reception are the **hunter phone's own position** at the
 moment of reception. The map shows where *you* were when you heard the
 target, and how well — not where the target is.

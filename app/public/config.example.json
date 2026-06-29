@@ -2,5 +2,9 @@
   "mqttUrl": "wss://broker.example:8084/ws",
   "mqttUsername": "core-hunter",
   "mqttPassword": "<publish-only EMQX account>",
-  "resolveUrl": "https://corescope.example/api/nodes/resolve"
+  "resolvers": [
+    { "label": "BE", "sf": 8, "url": "https://corescope-be.example/api/nodes/resolve" },
+    { "label": "NL", "sf": 7, "url": "https://corescope-nl.example/api/nodes/resolve" }
+  ],
+  "rssiCalibrationOffset": 0
 }

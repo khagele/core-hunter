@@ -5,6 +5,7 @@
 > [`2026-06-28-iteration-1-decisions.md`](2026-06-28-iteration-1-decisions.md); die log blijft ongewijzigd als
 > historisch verslag van waartegen iteratie 1 gebouwd is. Wat hier bekrachtigd wordt, wordt iteratie-2-scope.
 >
+> **Update (2026-06-29): iteration-2 items below are now IMPLEMENTED in the app (tasks I1–I4); see git history.** Field verification + the website/backend parts remain.
 > Per item: **huidige beslissing → voorgestelde wijziging → open punten**.
 
 ## Dominant nieuw principe (van de gebruiker, 2026-06-29)

@@ -93,9 +93,15 @@ Tasks **B1–B8 are DONE** (committed + pushed). The PWA under `app/` is a Vite 
 
 **Upstream source path note:** the plan's copy steps assume the CoreDrive RX source (`corescope-rx`) sits next to this repo as `../corescope-rx`. Adjust the copy paths to wherever it's checked out on your machine.
 
+**Iteration 2 (tasks I1–I4) is IMPLEMENTED:**
+- **Zero-hop only** — relayed (>0-hop) packets are dropped at capture; only `is_direct`/`hops===0` receptions are logged, published, and plotted. The 1-byte attribution axis is gone.
+- **RSSI is the signal metric** — fixed dBm bands (>=-80 hot / -80..-90 warm / -90..-100 mid / -100..-110 cool / <-110 cold); optional `rssiCalibrationOffset` in config. SNR still stored and shown as a number. All points are uniform (no direct/relayed ring styling).
+- **Ignore-list** — mutes stations by full pubkey (popup "Ignore this ID" button, settings-sheet manager, persisted in localStorage).
+- **Multi-resolver** — `resolvers` array in config (`{label, sf, url}`); config-ordered, first unambiguous hit wins. Back-compat single `resolveUrl` still supported. SF-ordered selection is firmware-gated (companion SF not yet readable) and falls back to config order.
+
 **What's left for Phase B:**
-1. **Live field/bench test** (plan Task B8 steps 1–2) — needs a real companion radio: Connect → confirm BLE+MQTT dots, SNR HUD updates, points appear, 0-hop ring + faded relays, layer/filter/isolate toggles, map survives a BLE drop, and rows land in `hunter_receptions` (1-byte `sender_keylen=1` rows present, `raw` populated). Serve over HTTPS/localhost (Web Bluetooth + Geolocation require it).
-2. **Task B9 (deferred):** decode advert `sender_role` **from MeshCore firmware** (never guess byte layouts). It's plumbed end-to-end as `null` today.
+1. **Live field/bench test** — needs a real companion radio: Connect → confirm BLE+MQTT dots, RSSI HUD updates, zero-hop points appear, ignore-list filters, layer toggles, map survives a BLE drop, rows land in `hunter_receptions`. Serve over HTTPS/localhost (Web Bluetooth + Geolocation require it).
+2. **Task B9 (deferred):** decode advert `sender_role` **from MeshCore firmware** (never guess byte layouts). It's plumbed end-to-end as `null` today. Also firmware-gated: SF-ordered resolver preference (companion SF not yet readable).
 
 Execution approach used: **subagent-driven-development** (implementer per task → spec review → code-quality review → fix loop → final whole-branch review).
 
