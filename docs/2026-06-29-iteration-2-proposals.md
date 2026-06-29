@@ -143,6 +143,11 @@ daardoor minder geschikt als afstandsindicator.
 toe en de kaart/HUD/heatmap kleuren standaard op RSSI. De thermische ramp (`--ch-sig-*`) blijft hergebruikt.
 Website: per-hunter relatieve normalisatie vóór het mergen.
 
+**Kalibratie / field-test (vastgelegd):** omdat RSSI een per-toestel-offset heeft, verschillen de "juiste"
+vaste dBm-drempels licht per companion-type. Bij de field-test **noteren met welke radio gekalibreerd wordt**;
+mogelijk per-companion-type-varianten van de banden voorzien (of een per-toestel-offset/kalibratiewaarde in de
+config). Te bepalen aan de hand van veldmetingen.
+
 ## Website / online backend (latere iteratie — scope-aanvulling)
 
 De website bundelt de zero-hop observaties van **alle hunters** tot één heatmap om een doel te lokaliseren
