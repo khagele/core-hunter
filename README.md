@@ -33,7 +33,7 @@ done in the `Spammer` project.
 | [`server/`](server/) | Go MQTT ingestor — subscribes to `meshcore/hunter/+/packets`, stores every reception |
 | [`app/`](app/) | Mobile hunter PWA — BLE scanner + live thermal hunt map; see [`app/README.md`](app/README.md) |
 
-## Related projects (siblings under `./`)
+## Related projects
 
 - `corescope-rx` — CoreDrive RX, the mobile RX-coverage PWA → the **scanner** base.
 - `CoreScope` — the analyzer/backend → the **map + point-visualization** base, plus live DB & ingestor.

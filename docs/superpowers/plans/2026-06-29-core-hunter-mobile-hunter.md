@@ -563,7 +563,7 @@ git add server/Dockerfile server/config.example.json server/.dockerignore
 git commit -m "feat(server): containerize ingestor (CGO-free, data volume)"
 ```
 
-> Deploy (manual, after user confirmation) on deploy-host: `docker run -d --name core-hunter-ingestor --restart unless-stopped -p 8090:8090 -v $(pwd)/config.json:/app/config.json:ro -v core-hunter-data:/app/data core-hunter-ingestor`. Requires an EMQX publish/subscribe account; ask before creating broker credentials.
+> Deploy (manual, after user confirmation) on the deploy host: `docker run -d --name core-hunter-ingestor --restart unless-stopped -p 8090:8090 -v $(pwd)/config.json:/app/config.json:ro -v core-hunter-data:/app/data core-hunter-ingestor`. Requires an EMQX publish/subscribe account; ask before creating broker credentials.
 
 ---
 

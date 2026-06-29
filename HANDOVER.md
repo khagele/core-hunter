@@ -1,7 +1,7 @@
 # core-hunter — Handover (resume on another system)
 
 > Last updated: 2026-06-29. Read this first when picking the project up on a new machine.
-> Everything below is committed to **https://github.com/efiten/core-hunter** (private, branch `master`).
+> Everything below is committed to **https://github.com/efiten/core-hunter** (branch `master`).
 
 ## TL;DR
 
@@ -65,7 +65,7 @@ MQTT payload contract the PWA must produce (Phase B builds this):
 
 ## Deploy (PENDING — needs your go-ahead)
 
-Not done yet. Steps when ready (host: deploy-host, per `~/.claude/CLAUDE.md`):
+Not done yet. Steps when ready (on the deploy host):
 1. **Create an EMQX account** for the ingestor with subscribe rights on `meshcore/hunter/#` (ask/confirm before creating broker credentials).
 2. Fill `server/config.json` from `server/config.example.json` (broker URL, user, pass).
 3. Build + run (Docker on the host):
@@ -91,7 +91,7 @@ Tasks **B1–B8 are DONE** (committed + pushed). The PWA under `app/` is a Vite 
 - **Orchestrator** (B7): `app.js` — BLE→capture→IndexedDB, renders map **from the store** each tick, drains to MQTT **without deleting rows**, no-GPS→no row, HUD + layer/filter/settings controls, type chips, live BLE/MQTT dots.
 - **Docs/verify** (B8): `app/README.md`, root README updated.
 
-**Upstream source path note:** the plan's relative `../corescope-rx` resolves wrong on this machine — the CoreDrive RX source is at `../corescope-rx/src` (siblings live directly under `../`, not `../meshcore/`).
+**Upstream source path note:** the plan's copy steps assume the CoreDrive RX source (`corescope-rx`) sits next to this repo as `../corescope-rx`. Adjust the copy paths to wherever it's checked out on your machine.
 
 **What's left for Phase B:**
 1. **Live field/bench test** (plan Task B8 steps 1–2) — needs a real companion radio: Connect → confirm BLE+MQTT dots, SNR HUD updates, points appear, 0-hop ring + faded relays, layer/filter/isolate toggles, map survives a BLE drop, and rows land in `hunter_receptions` (1-byte `sender_keylen=1` rows present, `raw` populated). Serve over HTTPS/localhost (Web Bluetooth + Geolocation require it).

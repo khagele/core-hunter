@@ -114,7 +114,7 @@ pijnpunt van het origineel op ("verbinding valt weg → kaart leeg").
 ## Component 2 — Backend-ingestor + DB
 
 **Stack:** Go. Subscribe op `meshcore/hunter/+/packets` via EMQX; schrijf elke reception in **SQLite,
-geen purge**. Eigen Docker-container op deploy-host, volledig los van CoreScope.
+geen purge**. Eigen Docker-container op de deploy-host, volledig los van CoreScope.
 
 Iteratie 1: alleen **ingest + opslag** + een `/healthz`-endpoint. Geen query-API (komt met de website).
 Leent het pure hex-binning-patroon van CoreScope (`hexgrid.go`) waar nuttig, maar dat is pas relevant
