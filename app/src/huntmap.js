@@ -1,4 +1,4 @@
-import { hexCellAt, hexBoundary } from './hexgrid.js'
+import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { getConfig } from './config.js'
 
@@ -66,9 +66,10 @@ export function createHuntMap(containerId) {
     }
     if (mode !== 'points') {
       const cells = new Map()
+      const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
       for (const r of records) {
         if (r.lat == null || r.lon == null) continue
-        const id = hexCellAt(r.lat, r.lon, 11)
+        const id = hexCellAt(r.lat, r.lon, res)
         const cur = cells.get(id)
         if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
       }
