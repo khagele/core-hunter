@@ -40,3 +40,14 @@ describe('normalizeConfig — resolvers array', () => {
     expect(c.resolvers).toEqual([])
   })
 })
+
+describe('normalizeConfig channelKeys', () => {
+  it('keeps a hex channelKeys map, lowercased', () => {
+    const c = normalizeConfig({ mqttUrl: 'wss://x/ws', channelKeys: { public: '8B3387E9C5CDEA6AC9E5EDBAA115CD72' } })
+    expect(c.channelKeys).toEqual({ public: '8b3387e9c5cdea6ac9e5edbaa115cd72' })
+  })
+  it('defaults to empty object when absent or malformed', () => {
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws' }).channelKeys).toEqual({})
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws', channelKeys: { bad: 123 } }).channelKeys).toEqual({})
+  })
+})

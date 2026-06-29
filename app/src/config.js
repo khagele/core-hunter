@@ -17,6 +17,7 @@ export function normalizeConfig(raw) {
     resolveUrl: String(raw.resolveUrl || '').trim(),
     rssiCalibrationOffset: typeof raw.rssiCalibrationOffset === 'number' ? raw.rssiCalibrationOffset : 0,
     resolvers: [],
+    channelKeys: {},
   };
   if (!c.mqttUrl) throw new Error('config.json: "mqttUrl" is required');
 
@@ -33,6 +34,14 @@ export function normalizeConfig(raw) {
   } else if (c.resolveUrl) {
     // Back-compat: single resolveUrl becomes a one-element resolvers array.
     c.resolvers = [{ url: c.resolveUrl }];
+  }
+
+  if (raw.channelKeys && typeof raw.channelKeys === 'object' && !Array.isArray(raw.channelKeys)) {
+    for (const [name, key] of Object.entries(raw.channelKeys)) {
+      if (typeof key === 'string' && /^[0-9a-fA-F]+$/.test(key) && key.length > 0) {
+        c.channelKeys[name] = key.toLowerCase();
+      }
+    }
   }
 
   return c;
