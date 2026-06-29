@@ -149,12 +149,10 @@ async function processFrame(dv) {
   try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { return }
   if (!decoded || !decoded.isValid) return
   const cls = classifyReception(decoded, channelNameFor)
-  // TEMP debug (bench) — remove after testing
-  console.log(`[rx] hops=${cls.hops} direct=${cls.isDirect} snr=${frame.snr} rssi=${frame.rssi} type=${cls.packetType} sender=${cls.sender.id} captured=${shouldCapture(cls)}`)
   if (!shouldCapture(cls)) return
 
   const fix = state.manualFix || state.gps.latest()
-  if (!fix) { console.log('[rx] dropped: no GPS fix'); return }
+  if (!fix) return
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString())
   rec._text = cls.text // local-only, for the popup; stripped before publish
@@ -249,7 +247,6 @@ async function connectAll() {
     const info = await requestSelfInfo(state.transport, 'core-hunter')
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
-    console.log('[self] pubkey=%s name=%s', state.rxPubkey, state.name) // TEMP debug (bench) — remove after testing
 
     // 3. GPS
     state.gps.start((fix) => {
@@ -305,7 +302,15 @@ async function disconnectAll(silent) {
 // Filter sheet helpers
 // ---------------------------------------------------------------------------
 
-const FILTER_PACKET_TYPES = ['advert', 'discover', 'channel-msg', 'other']
+const FILTER_PACKET_TYPES = [
+  { value: 'Advert',      label: 'Advert' },
+  { value: 'GroupText',   label: 'Channel' },
+  { value: 'Response',    label: 'Response' },
+  { value: 'Request',     label: 'Request' },
+  { value: 'TextMessage', label: 'Direct msg' },
+  { value: 'Ack',         label: 'Ack' },
+  { value: 'Trace',       label: 'Trace' },
+]
 
 function buildFilterSheet() {
   const sheet = el('filter-sheet')
@@ -328,7 +333,7 @@ function buildFilterSheet() {
       <div class="fs-type-row">
         <span class="fs-type-label">Types</span>
         <div id="fs-type-chips" class="fs-type-chips">
-          ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t}">${t}</button>`).join('')}
+          ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
         </div>
       </div>
       <button id="fs-close">Done</button>
