@@ -12,7 +12,11 @@ function invMercator(x, y) {
 
 export function hexSizeForRes(res) {
   switch (true) {
-    case res >= 11: return 40;
+    case res >= 15: return 3;
+    case res === 14: return 5;
+    case res === 13: return 10;
+    case res === 12: return 20;
+    case res === 11: return 40;
     case res === 10: return 90;
     case res === 9: return 180;
     case res === 8: return 360;
@@ -21,8 +25,16 @@ export function hexSizeForRes(res) {
   }
 }
 
-// hexResForZoom mirrors the server's zoomToHexRes.
+// hexResForZoom maps the map zoom to a hex resolution. Coarser bands mirror the
+// server's zoomToHexRes; res 12–15 (20/10/5/3 m) extend it so the live map gets
+// finer cells than the server's 40 m floor when zoomed in for close-range
+// localization (down to 3 m at max zoom). Below GPS accuracy a single point is
+// mostly noise, but the aggregated heat still surfaces the hotspot.
 export function hexResForZoom(z) {
+  if (z >= 19) return 15;
+  if (z >= 18) return 14;
+  if (z >= 17) return 13;
+  if (z >= 16) return 12;
   if (z >= 15) return 11;
   if (z >= 13) return 10;
   if (z >= 11) return 9;
