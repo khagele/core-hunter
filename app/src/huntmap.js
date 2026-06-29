@@ -81,21 +81,24 @@ export function createHuntMap(containerId) {
 
 function popupHtml(r) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-  const shortKey = r.sender_key ? (r.sender_key.length > 16 ? r.sender_key.slice(0, 16) + '…' : r.sender_key) : '—'
+  const senderLine = r.sender_id
+    ? `${r.sender_kind === 'channel_name' ? 'name' : r.sender_kind === 'advert_pubkey' ? 'node' : 'src'} ${esc(r.sender_label || r.sender_id)}`
+    : 'sender — (none)'
+  const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
+  const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
   return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
     + `hops ${esc(r.hops)} · ${esc(r.packet_type)}<br>`
-    + `sender ${esc(shortKey)} (${esc(r.sender_keylen)}B)<br>`
-    + `role ${esc(r.sender_role)}<br>`
-    + `<button class="ch-isolate" ${r.sender_key ? '' : 'disabled'}>Isolate sender</button>`
-    + ` <button class="ch-ignore" ${r.sender_key ? '' : 'disabled'}>Ignore this ID</button></div>`
+    + senderLine + chanLine + textLine + '<br>'
+    + `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
+    + ` <button class="ch-ignore" ${r.sender_id ? '' : 'disabled'}>Ignore this ID</button></div>`
 }
 function wireIsolate(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-isolate')
-  if (btn && r.sender_key) btn.onclick = () => document.dispatchEvent(
-    new CustomEvent('hunt:isolate-sender', { detail: { key: r.sender_key, keylen: r.sender_keylen } }))
+  if (btn && r.sender_id) btn.onclick = () => document.dispatchEvent(
+    new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id } }))
 }
 function wireIgnore(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-ignore')
-  if (btn && r.sender_key) btn.onclick = () => document.dispatchEvent(
-    new CustomEvent('hunt:ignore-sender', { detail: { key: r.sender_key, keylen: r.sender_keylen } }))
+  if (btn && r.sender_id) btn.onclick = () => document.dispatchEvent(
+    new CustomEvent('hunt:ignore-sender', { detail: { id: r.sender_id } }))
 }

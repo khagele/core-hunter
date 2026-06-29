@@ -3,7 +3,7 @@
 // drives the HUD and controls.
 //
 // Pipeline per 0x88 frame:
-//   parseFrame → code check → parsePacket → classifyReception
+//   parseFrame → code check → decodePacket → classifyReception
 //   → GPS fix (drop if none) → buildRecord → queue.add → updateHud
 //
 // Render tick (1s): non-destructive queue.takeAll() → makeFilter → map.render
@@ -12,7 +12,8 @@
 
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
-import { parsePacket, classifyReception } from './meshpacket.js'
+import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
+import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue } from './queue.js'
 import { Publisher } from './publisher.js'
@@ -144,22 +145,19 @@ function setDot(id, on) {
 async function processFrame(dv) {
   const frame = parseFrame(dv)
   if (!frame || frame.code !== PUSH_CODE_LOG_RX_DATA) return
-  console.log('[frame] code=0x%s', frame.code.toString(16)) // TEMP debug (bench) — remove after testing
-
-  const pkt = parsePacket(frame.raw)
-  if (!pkt) return
-
-  const cls = classifyReception('rx', pkt)
-  console.log('[rx] hops=%d direct=%s snr=%s rssi=%s type=%s sender=%s captured=%s', cls.hops, cls.isDirect, frame.snr, frame.rssi, cls.packetType, cls.senderKey, shouldCapture(cls)) // TEMP debug (bench) — remove after testing
-  if (!shouldCapture(cls)) return   // iteration 2: only zero-hop is captured/queued/published
+  let decoded
+  try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { return }
+  if (!decoded || !decoded.isValid) return
+  const cls = classifyReception(decoded, channelNameFor)
+  // TEMP debug (bench) — remove after testing
+  console.log(`[rx] hops=${cls.hops} direct=${cls.isDirect} snr=${frame.snr} rssi=${frame.rssi} type=${cls.packetType} sender=${cls.sender.id} captured=${shouldCapture(cls)}`)
+  if (!shouldCapture(cls)) return
 
   const fix = state.manualFix || state.gps.latest()
-  if (!fix) { // TEMP debug (bench) — remove after testing
-    console.log('[rx] dropped: no GPS fix') // TEMP debug (bench) — remove after testing
-    return // no GPS fix → drop (coverage without position is useless)
-  }
+  if (!fix) { console.log('[rx] dropped: no GPS fix'); return }
 
-  const rec = buildRecord(frame, pkt, cls, fix, new Date().toISOString())
+  const rec = buildRecord(frame, cls, fix, new Date().toISOString())
+  rec._text = cls.text // local-only, for the popup; stripped before publish
   await state.queue.add(rec)
   updateHud(rec)
 }
@@ -505,10 +503,10 @@ function cycleLayer() {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('hunt:isolate-sender', (e) => {
-  state.filter.sender = e.detail || null
+  state.filter.sender = (e.detail && e.detail.id) ? { id: e.detail.id } : null
   const chip = el('target-chip')
-  if (e.detail && e.detail.key) {
-    chip.textContent = '⌖ ' + e.detail.key.slice(0, 12)
+  if (e.detail && e.detail.id) {
+    chip.textContent = '⌖ ' + String(e.detail.id).slice(0, 12)
     chip.classList.add('active')
   } else {
     chip.textContent = 'No target'
@@ -521,8 +519,8 @@ document.addEventListener('hunt:isolate-sender', (e) => {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('hunt:ignore-sender', (e) => {
-  if (!e.detail || !e.detail.key) return
-  state.ignore.add(e.detail.key.toLowerCase())
+  if (!e.detail || !e.detail.id) return
+  state.ignore.add(String(e.detail.id).toLowerCase())
   saveIgnore(state.ignore)
   // next renderTick picks up the updated set automatically
 })
@@ -538,6 +536,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {
     console.warn('[config]', e.message)
   }
+  initDecoder((getConfig() || {}).channelKeys)
 
   // Initialise map
   state.map = createHuntMap('map')
