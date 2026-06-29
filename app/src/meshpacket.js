@@ -1,27 +1,7 @@
-// MeshCore packet parsing for RX coverage — JS port of CoreScope's
-// internal/packetpath path extraction + the ingestor deriveHeardKey rule.
-// Source of truth: firmware/docs/packet_format.md + internal/packetpath/path.go.
+import { getPayloadTypeName } from './decode.js'
 
-export const ROUTE_TRANSPORT_FLOOD = 0;
-export const ROUTE_FLOOD = 1;
-export const ROUTE_DIRECT = 2;
-export const ROUTE_TRANSPORT_DIRECT = 3;
-export const PAYLOAD_TYPE_ADVERT = 4;
-export const PAYLOAD_TYPE_TRACE = 9;   // path bytes are per-hop SNR, NOT hop hashes
-export const PAYLOAD_TYPE_CONTROL = 11; // 0x0B — control data (e.g. node-discover)
-export const CTRL_DISCOVER_RESP = 0x9;  // sub_type nibble (flags >> 4) of a DISCOVER_RESP
-
-function isTransportRoute(rt) {
-  return rt === ROUTE_TRANSPORT_FLOOD || rt === ROUTE_TRANSPORT_DIRECT;
-}
-
-// isFloodRoute reports whether the route accumulates forwarders at the END of the path (FLOOD).
-// Only then is path[last] the immediate RF transmitter. DIRECT routes consume the next hop from
-// the FRONT (firmware Mesh.cpp removeSelfFromPath), so their path[last] is the route's
-// destination-side end — not who we heard.
-export function isFloodRoute(rt) {
-  return rt === ROUTE_TRANSPORT_FLOOD || rt === ROUTE_FLOOD;
-}
+const PT_ADVERT = 4
+const PT_GROUP_TEXT = 5
 
 export function bytesToHex(bytes) {
   let s = '';
@@ -36,105 +16,26 @@ export function hexToBytes(hex) {
   return out;
 }
 
-// parsePacket extracts routing/header info from a raw MeshCore packet.
-// Returns { routeType, payloadType, isAdvert, hops:[hex], advertPubkey:hex|null }
-// or null if the buffer is too short / malformed.
-export function parsePacket(bytes) {
-  if (!bytes || bytes.length < 2) return null;
-  const b0 = bytes[0];
-  const routeType = b0 & 0x03;
-  const payloadType = (b0 >> 2) & 0x0f;
-  let off = 1;
-  if (isTransportRoute(routeType)) {
-    if (bytes.length < off + 4) return null;
-    off += 4; // skip transport codes (region scoping)
-  }
-  if (off >= bytes.length) return null;
-  const pathByte = bytes[off++];
-  const hashSize = (pathByte >> 6) + 1;
-  const hashCount = pathByte & 0x3f;
-  const hops = [];
-  for (let i = 0; i < hashCount; i++) {
-    const s = off + i * hashSize;
-    const e = s + hashSize;
-    if (e > bytes.length) break;
-    hops.push(bytesToHex(bytes.slice(s, e)));
-  }
-  off += hashCount * hashSize;
+export function classifyReception(decoded, channelNameFor = () => null) {
+  const pt = decoded.payloadType
+  const hops = decoded.pathLength || 0
+  const d = (decoded.payload && decoded.payload.decoded) || {}
+  let sender = { kind: null, id: null, label: null }
+  let channel = null
+  let text = null
 
-  const isAdvert = payloadType === PAYLOAD_TYPE_ADVERT;
-  let advertPubkey = null;
-  if (isAdvert && off + 32 <= bytes.length) {
-    advertPubkey = bytesToHex(bytes.slice(off, off + 32)); // advert payload starts with the 32-byte pubkey
-  }
-
-  // node-discover reply (CONTROL/DISCOVER_RESP): payload is [flags][snr][tag×4][pubkey].
-  // The pubkey (8-byte prefix or full 32) is the responder's identity — a direct, high-quality
-  // heard_key, better than a path hash. Control payload bytes are unencrypted (firmware payloads.md).
-  let isDiscoverResp = false;
-  let discoverPubkey = null;
-  if (payloadType === PAYLOAD_TYPE_CONTROL && off < bytes.length && (bytes[off] >> 4) === CTRL_DISCOVER_RESP) {
-    isDiscoverResp = true;
-    const pkOff = off + 6; // skip flags(1) + snr(1) + tag(4)
-    const pkLen = bytes.length - pkOff;
-    if (pkLen === 8 || pkLen === 32) discoverPubkey = bytesToHex(bytes.slice(pkOff, pkOff + pkLen));
-  }
-
-  return { routeType, payloadType, isAdvert, hops, advertPubkey, isDiscoverResp, discoverPubkey };
-}
-
-const PACKET_TYPE = (pkt) => {
-  if (pkt.isAdvert) return 'advert'
-  if (pkt.isDiscoverResp) return 'discover'
-  if (pkt.payloadType === PAYLOAD_TYPE_TRACE) return 'other'
-  return 'channel-msg'
-}
-
-export function classifyReception(direction, pkt) {
-  const hops = pkt.hops ? pkt.hops.length : 0
-  const isDirect = hops === 0
-  const packetType = PACKET_TYPE(pkt)
-  let senderKey = null, senderKeylen = 0, src = null
-
-  // iteration 2: only zero-hop (direct) packets are attributed.
-  // Relayed packets (hops > 0) describe the last repeater, not the target — dropped.
-  if (direction === 'rx' && isDirect && pkt.payloadType !== PAYLOAD_TYPE_TRACE) {
-    if (pkt.isAdvert && pkt.advertPubkey) {
-      senderKey = pkt.advertPubkey; senderKeylen = senderKey.length / 2; src = 'advert'
-    } else if (pkt.isDiscoverResp && pkt.discoverPubkey) {
-      senderKey = pkt.discoverPubkey; senderKeylen = senderKey.length / 2; src = 'discover'
+  if (pt === PT_ADVERT && d.publicKey) {
+    sender = { kind: 'advert_pubkey', id: d.publicKey.toLowerCase(), label: (d.appData && d.appData.name) || null }
+  } else if (pt === PT_GROUP_TEXT) {
+    channel = channelNameFor(d.channelHash)
+    if (d.decrypted && d.decrypted.sender) {
+      sender = { kind: 'channel_name', id: d.decrypted.sender, label: d.decrypted.sender }
+      text = d.decrypted.message || null
     }
+  } else if (d.sourceHash) {
+    const id = String(d.sourceHash).toLowerCase()
+    sender = { kind: 'direct_hash', id, label: id }
   }
-  return { senderKey, senderKeylen, src, hops, isDirect, packetType }
-}
 
-// deriveHeardKey applies the capture HARD RULE: record only the node heard
-// directly — path[last] (last forwarder) or, for a 0-hop advert, the full
-// pubkey. 1-byte prefixes are excluded (collision-prone). direction must be rx.
-// Returns { heardKey, heardKeyLen, src } or null.
-export function deriveHeardKey(direction, pkt) {
-  if (direction !== 'rx' || !pkt) return null;
-  // TRACE repurposes the header path bytes as per-hop SNR values, so path[last] is NOT a node id.
-  // Refuse to attribute it (matches CoreScope's PathBytesAreHops guard) — otherwise we'd record
-  // a garbage heard_key built from SNR bytes.
-  if (pkt.payloadType === PAYLOAD_TYPE_TRACE) return null;
-  if (pkt.hops.length > 0) {
-    // path[last] is only the immediate transmitter for FLOOD routes (forwarders append at the end).
-    // For DIRECT routes the transmitter removed itself from the front, so path[last] is the route's
-    // far (destination) end — not who we heard. We cannot recover the transmitter, so skip it.
-    if (!isFloodRoute(pkt.routeType)) return null;
-    const last = pkt.hops[pkt.hops.length - 1].toLowerCase();
-    const keylen = last.length / 2;
-    if (keylen < 2) return null;
-    return { heardKey: last, heardKeyLen: keylen, src: 'rxlog' };
-  }
-  if (pkt.isAdvert && pkt.advertPubkey) {
-    const pk = pkt.advertPubkey.toLowerCase();
-    return { heardKey: pk, heardKeyLen: pk.length / 2, src: 'advert' };
-  }
-  if (pkt.isDiscoverResp && pkt.discoverPubkey) {
-    const pk = pkt.discoverPubkey.toLowerCase();
-    return { heardKey: pk, heardKeyLen: pk.length / 2, src: 'discover' };
-  }
-  return null;
+  return { packetType: getPayloadTypeName(pt), hops, isDirect: hops === 0, sender, channel, text }
 }
