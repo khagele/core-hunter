@@ -1,0 +1,59 @@
+// Publishes buffered receptions to MQTT (over WebSocket/TLS) in the
+// meshcoretomqtt-compatible format CoreScope's ingestor consumes, on the
+// client topic meshcore/client/{PUBLIC_KEY}/packets.
+import mqtt from 'mqtt';
+
+export class Publisher {
+  // opts: { url, username, password } — EMQX WSS endpoint + per-client creds.
+  constructor(opts) { this.opts = opts; this.client = null; }
+
+  connect() {
+    this.client = mqtt.connect(this.opts.url, {
+      username: this.opts.username,
+      password: this.opts.password,
+      clientId: this.opts.clientId, // = companion pubkey; EMQX ACL can bind topics to ${clientid}
+      reconnectPeriod: 4000,
+      clean: true,
+    });
+    return new Promise((resolve, reject) => {
+      this.client.once('connect', resolve);
+      this.client.once('error', reject);
+    });
+  }
+
+  connected() { return !!(this.client && this.client.connected); }
+
+  end() { try { if (this.client) this.client.end(true); } catch (e) {} this.client = null; }
+
+  // buildPayload assembles one reception in the ingestor's expected shape.
+  // `name` is the companion's self-reported name (SELF_INFO) → sent as "origin"
+  // so the server can label this observer even if it never advertised.
+  static buildPayload(rxPubkey, rec, name) {
+    return {
+      origin_id: rxPubkey,
+      origin: name || undefined,
+      timestamp: rec.rx_at,
+      type: 'PACKET',
+      direction: 'rx',
+      raw: rec.raw,
+      SNR: rec.snr,
+      RSSI: rec.rssi,
+      is_direct: rec.is_direct,
+      hops: rec.hops,
+      sender_key: rec.sender_key,
+      sender_keylen: rec.sender_keylen,
+      sender_role: rec.sender_role,
+      packet_type: rec.packet_type,
+      gps: { lat: rec.lat, lon: rec.lon, acc_m: rec.acc_m },
+    };
+  }
+
+  // publish sends one reception; resolves on broker ack (QoS1).
+  publish(rxPubkey, rec, name) {
+    const topic = 'meshcore/hunter/' + rxPubkey + '/packets';
+    const payload = JSON.stringify(Publisher.buildPayload(rxPubkey, rec, name));
+    return new Promise((resolve, reject) => {
+      this.client.publish(topic, payload, { qos: 1 }, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
