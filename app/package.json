@@ -8,6 +8,12 @@
     "preview": "vite preview",
     "test": "vitest run"
   },
-  "dependencies": { "mqtt": "^5.10.1" },
-  "devDependencies": { "vite": "^5.4.0", "vitest": "^2.0.0" }
+  "dependencies": {
+    "@michaelhart/meshcore-decoder": "^0.3.0",
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
 }
