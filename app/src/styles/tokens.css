@@ -18,6 +18,7 @@
 
   --ch-direct-glow: var(--ch-accent-2);  /* 0-hop ring */
   --ch-relayed-fade: 0.35;               /* opacity for hops>0 points */
+  --ch-bar-track: #1b2230;               /* HUD signal-bar track */
 }
 
 /* ---- LIGHT theme: warm paper + teal accent (its own identity, not inverted dark) ---- */
@@ -40,4 +41,5 @@
 
   --ch-direct-glow: var(--ch-accent-2);
   --ch-relayed-fade: 0.4;
+  --ch-bar-track: #d8d2c4;               /* HUD signal-bar track (light) */
 }

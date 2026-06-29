@@ -13,7 +13,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   grid-template-columns: auto auto 1fr auto; gap: 10px 14px; align-items: center; z-index: 500; }
 #hud-snr { font-size: 34px; font-weight: 700; color: var(--ch-accent); }
 #hud-hop { color: var(--ch-muted); }
-#hud-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: #1b2230; overflow: hidden; }
+#hud-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--ch-bar-track); overflow: hidden; }
 #hud-bar-fill { height: 100%; width: 0; background: linear-gradient(90deg,
   var(--ch-sig-cold), var(--ch-sig-cool), var(--ch-sig-mid), var(--ch-sig-warm), var(--ch-sig-hot)); }
 #layer-toggle, #filter-btn, #settings-btn { position: fixed; right: 14px; width: 46px; height: 46px;

@@ -162,6 +162,14 @@ async function connectAll() {
   btn.textContent = 'Connecting…'
 
   try {
+    // Dispose any prior transport first. On a spontaneous BLE drop the old
+    // transport stays in its reconnect backoff loop (_intentional=false); without
+    // this, a fresh connect would orphan it and double-capture once it reconnects.
+    if (state.transport) {
+      try { await state.transport.disconnect() } catch (_) {}
+      state.transport = null
+    }
+
     // 1. BLE transport
     state.transport = new WebBluetoothTransport()
     state.transport.onStatus((s) => {
