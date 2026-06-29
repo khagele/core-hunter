@@ -42,6 +42,23 @@ function saveIgnore(set) {
   } catch (_) {}
 }
 
+// Load / save manual position override (dev only). Key: 'core-hunter-manual-fix'.
+// Value: JSON { lat, lon, acc_m } or null.
+function loadManualFix() {
+  try {
+    const raw = localStorage.getItem('core-hunter-manual-fix')
+    if (raw) return JSON.parse(raw)
+  } catch (_) {}
+  return null
+}
+
+function saveManualFix(fix) {
+  try {
+    if (fix == null) localStorage.removeItem('core-hunter-manual-fix')
+    else localStorage.setItem('core-hunter-manual-fix', JSON.stringify(fix))
+  } catch (_) {}
+}
+
 const state = {
   transport: null,
   gps: new Gps(),
@@ -57,6 +74,7 @@ const state = {
   // On app restart the Set is empty, so rows are republished; that is fine.
   published: new Set(),
   ignore: loadIgnore(),
+  manualFix: loadManualFix(),
   filter: {
     sender: null,
     types: null,
@@ -108,7 +126,7 @@ async function processFrame(dv) {
   const cls = classifyReception('rx', pkt)
   if (!shouldCapture(cls)) return   // iteration 2: only zero-hop is captured/queued/published
 
-  const fix = state.gps.latest()
+  const fix = state.manualFix || state.gps.latest()
   if (!fix) return // no GPS fix → drop (coverage without position is useless)
 
   const rec = buildRecord(frame, pkt, cls, fix, new Date().toISOString())
@@ -339,6 +357,14 @@ function renderIgnoreList(listEl) {
   }
 }
 
+function updateManualFixStatus(statusEl) {
+  const f = state.manualFix
+  statusEl.textContent = f
+    ? `Manual position: ${f.lat}, ${f.lon} — overriding GPS`
+    : 'off'
+  statusEl.classList.toggle('ss-manfix-active', !!f)
+}
+
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
@@ -352,6 +378,25 @@ function buildSettingsSheet() {
         <h3>Ignored stations</h3>
         <div id="ss-ignore-list"></div>
         <button id="ss-ignore-clear">Clear ignore-list</button>
+      </div>
+      <div class="ss-manfix-section">
+        <h3>Manual position (dev)</h3>
+        <div class="ss-manfix-inputs">
+          <label class="ss-manfix-label">
+            Lat
+            <input type="number" id="ss-manfix-lat" step="any" placeholder="51.05" />
+          </label>
+          <label class="ss-manfix-label">
+            Lon
+            <input type="number" id="ss-manfix-lon" step="any" placeholder="3.72" />
+          </label>
+        </div>
+        <div class="ss-manfix-error" id="ss-manfix-error" hidden></div>
+        <div class="ss-manfix-actions">
+          <button id="ss-manfix-set">Set</button>
+          <button id="ss-manfix-clear">Clear</button>
+        </div>
+        <p id="ss-manfix-status" class="ss-manfix-status"></p>
       </div>
       <button id="ss-close">Done</button>
     </div>`
@@ -370,6 +415,43 @@ function buildSettingsSheet() {
     state.ignore.clear()
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
+  })
+
+  // Manual position — prefill inputs from persisted state
+  const latInput = el('ss-manfix-lat')
+  const lonInput = el('ss-manfix-lon')
+  const statusEl = el('ss-manfix-status')
+  const errorEl = el('ss-manfix-error')
+
+  if (state.manualFix) {
+    latInput.value = state.manualFix.lat
+    lonInput.value = state.manualFix.lon
+  }
+  updateManualFixStatus(statusEl)
+
+  el('ss-manfix-set').addEventListener('click', () => {
+    errorEl.hidden = true
+    const lat = parseFloat(latInput.value)
+    const lon = parseFloat(lonInput.value)
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      errorEl.textContent = 'Invalid coordinates. Lat −90..90, Lon −180..180.'
+      errorEl.hidden = false
+      return
+    }
+    state.manualFix = { lat, lon, acc_m: 10 }
+    saveManualFix(state.manualFix)
+    updateManualFixStatus(statusEl)
+    if (state.map) {
+      state.map.setPosition(lat, lon)
+      state.map.centerOn(lat, lon)
+    }
+  })
+
+  el('ss-manfix-clear').addEventListener('click', () => {
+    errorEl.hidden = true
+    state.manualFix = null
+    saveManualFix(null)
+    updateManualFixStatus(statusEl)
   })
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
@@ -453,6 +535,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
       renderIgnoreList(el('ss-ignore-list'))
+      updateManualFixStatus(el('ss-manfix-status'))
     }
   })
 

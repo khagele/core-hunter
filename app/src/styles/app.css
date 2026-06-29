@@ -30,3 +30,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
   border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }
 [hidden] { display: none !important; }
+.ss-manfix-section { margin-top: 16px; }
+.ss-manfix-inputs { display: flex; gap: 12px; margin-top: 8px; }
+.ss-manfix-label { display: flex; flex-direction: column; font-size: 13px; color: var(--ch-muted); gap: 4px; }
+.ss-manfix-label input { width: 110px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
+  background: transparent; color: var(--ch-text); font-size: 14px; }
+.ss-manfix-actions { display: flex; gap: 8px; margin-top: 8px; }
+.ss-manfix-status { font-size: 13px; color: var(--ch-muted); margin: 6px 0 0; }
+.ss-manfix-status.ss-manfix-active { color: var(--ch-accent-2); }
+.ss-manfix-error { font-size: 13px; color: var(--ch-accent-2); margin-top: 4px; }

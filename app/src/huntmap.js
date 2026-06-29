@@ -5,7 +5,7 @@ import { getConfig } from './config.js'
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
   const cfg = getConfig()
   const offset = (cfg && cfg.rssiCalibrationOffset) || 0
   const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
@@ -68,9 +68,10 @@ export function createHuntMap(containerId) {
     here = here || L.circleMarker([lat, lon], { radius: 6, color: cssVar('--ch-accent'), weight: 2 }).addTo(map)
     here.setLatLng([lat, lon])
   }
+  function centerOn(lat, lon) { map.setView([lat, lon], map.getZoom() ?? 15) }
   function setLayerMode(m) { mode = m }
   function destroy() { map.remove() }
-  return { setPosition, render, setLayerMode, applyBasemap, destroy }
+  return { setPosition, centerOn, render, setLayerMode, applyBasemap, destroy }
 }
 
 function popupHtml(r) {
