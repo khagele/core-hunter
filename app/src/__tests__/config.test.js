@@ -50,4 +50,8 @@ describe('normalizeConfig channelKeys', () => {
     expect(normalizeConfig({ mqttUrl: 'wss://x/ws' }).channelKeys).toEqual({})
     expect(normalizeConfig({ mqttUrl: 'wss://x/ws', channelKeys: { bad: 123 } }).channelKeys).toEqual({})
   })
+  it('drops odd-length hex keys (cannot be parsed to bytes)', () => {
+    const c = normalizeConfig({ mqttUrl: 'wss://x/ws', channelKeys: { bad: 'abc', good: '8b3387e9c5cdea6ac9e5edbaa115cd72' } })
+    expect(c.channelKeys).toEqual({ good: '8b3387e9c5cdea6ac9e5edbaa115cd72' })
+  })
 })
