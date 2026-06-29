@@ -36,6 +36,7 @@ export function createHuntMap(containerId) {
     pointLayer.clearLayers(); hexLayer.clearLayers()
     if (mode !== 'hex') {
       for (const r of records) {
+        if (r.lat == null || r.lon == null) continue
         const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
         m.bindPopup(popupHtml(r))
         m.on('popupopen', (e) => wireIsolate(e.popup, r))
@@ -45,6 +46,7 @@ export function createHuntMap(containerId) {
     if (mode !== 'points') {
       const cells = new Map()
       for (const r of records) {
+        if (r.lat == null || r.lon == null) continue
         const id = hexCellAt(r.lat, r.lon, 11)
         const cur = cells.get(id)
         if (!cur || (r.snr ?? -99) > (cur.best ?? -99)) cells.set(id, { best: r.snr })
