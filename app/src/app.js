@@ -21,7 +21,6 @@ import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter } from './filters.js'
-import { rssiTier } from './signal.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -93,17 +92,43 @@ const el = (id) => document.getElementById(id)
 // HUD
 // ---------------------------------------------------------------------------
 
-// SNR tier → bar fill 0–100%.  hot=100, warm=80, mid=60, cool=40, cold=20, none=10
-const TIER_PCT = { hot: 100, warm: 80, mid: 60, cool: 40, cold: 20, none: 10 }
+// RSSI → continuous bar marker percent.
+// Maps calibrated RSSI from the weak end (-115 dBm) to the strong end (-75 dBm) → 0–100%.
+function rssiToPct(rssi, offset) {
+  if (rssi == null) return 10
+  const calibrated = rssi + offset
+  const WEAK = -115
+  const STRONG = -75
+  const clamped = Math.max(WEAK, Math.min(STRONG, calibrated))
+  return Math.round(((clamped - WEAK) / (STRONG - WEAK)) * 100)
+}
 
 function updateHud(rec) {
-  el('hud-snr').textContent = rec.snr != null ? rec.snr.toFixed(1) + ' dB' : '—'
-  el('hud-rssi').textContent = rec.rssi != null ? rec.rssi + ' dBm' : '—'
-  el('hud-hop').textContent = 'hop ' + (rec.hops != null ? rec.hops : '—')
+  // Hero: RSSI (big green readout)
+  const rssiEl = el('hud-rssi')
+  if (rec.rssi != null) {
+    rssiEl.innerHTML = rec.rssi + '<span class="unit"> dBm</span>'
+  } else {
+    rssiEl.textContent = '—'
+  }
+
+  // Secondary: SNR (small muted)
+  el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : 'SNR —'
+
+  // Hop pill: amber when data present
+  const hopEl = el('hud-hop')
+  if (rec.hops != null) {
+    hopEl.textContent = 'hop ' + rec.hops + ' · direct'
+    hopEl.classList.remove('no-data')
+  } else {
+    hopEl.textContent = 'hop —'
+    hopEl.classList.add('no-data')
+  }
+
+  // Thermal bar marker — continuous position from RSSI
   const offset = (getConfig() && getConfig().rssiCalibrationOffset) || 0
-  const tier = rssiTier(rec.rssi, offset)
-  const pct = TIER_PCT[tier] ?? 10
-  el('hud-bar-fill').style.width = pct + '%'
+  const pct = rssiToPct(rec.rssi, offset)
+  el('hud-bar-marker').style.left = pct + '%'
 }
 
 function setDot(id, on) {
@@ -477,7 +502,7 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   state.filter.sender = e.detail || null
   const chip = el('target-chip')
   if (e.detail && e.detail.key) {
-    chip.textContent = e.detail.key.slice(0, 12) + '…'
+    chip.textContent = '⌖ ' + e.detail.key.slice(0, 12)
     chip.classList.add('active')
   } else {
     chip.textContent = 'No target'
