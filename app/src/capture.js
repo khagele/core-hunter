@@ -15,6 +15,7 @@ export function buildRecord(frame, cls, gps, nowIso) {
     sender_kind: cls.sender.kind,
     sender_id: cls.sender.id,
     sender_label: cls.sender.label,
+    sender_role: cls.sender.role || null,
     channel_name: cls.channel,
     is_direct: cls.isDirect,
     hops: cls.hops,

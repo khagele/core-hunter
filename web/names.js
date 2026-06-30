@@ -1,13 +1,16 @@
-// Client-side node-name resolution for the analysis map. Mirrors the scanner
-// app's names.js: each distinct full pubkey is fetched from the CoreScope
-// resolver at most once and cached in memory. Only full 32-byte pubkeys are
-// resolvable; 1-byte source/path hashes are ambiguous and skipped.
+// Client-side node-name resolution for the analysis map. Each distinct pubkey /
+// pubkey-prefix is fetched from the CoreScope resolver at most once and cached.
+// Resolvable = a full 32-byte pubkey (advert) OR a >= 4-byte prefix (discover
+// reply) — CoreScope resolves those uniquely. 1-byte source/path hashes (2 hex)
+// are ambiguous and skipped.
 import { RESOLVE_URL } from './config.js'
 
 const cache = new Map() // key (lowercase hex) -> name | ''
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i
+const RESOLVABLE = /^[0-9a-f]{8,64}$/i // 4..32 bytes; excludes 1-byte hashes
 
 export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.test(id) }
+export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE.test(id) }
 
 // cachedName: resolved name ('' = resolved-but-unknown) or undefined if not yet
 // looked up. Synchronous — use it while rendering.
@@ -37,10 +40,11 @@ export async function resolveName(key) {
 }
 
 // senderName picks the best label for a point: an existing server label wins
-// (fill-only), then a cached resolved name for a full pubkey, then the raw id.
+// (fill-only — advert broadcast names), then a cached resolved name for a
+// resolvable id (full pubkey or discover prefix), then the raw id.
 export function senderName(pt) {
   if (pt.sender_label) return pt.sender_label
-  if (isFullPubkey(pt.sender_id)) {
+  if (isResolvableId(pt.sender_id)) {
     const hit = cachedName(pt.sender_id)
     if (hit) return hit
   }

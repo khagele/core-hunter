@@ -9,7 +9,7 @@ describe('buildRecord', () => {
     const rec = buildRecord(frame, cls, { lat: 51, lon: 4, acc_m: 8 }, '2026-06-29T10:00:00Z')
     expect(rec).toEqual({
       rx_at: '2026-06-29T10:00:00Z', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8,
-      sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer', channel_name: 'public',
+      sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer', sender_role: null, channel_name: 'public',
       is_direct: true, hops: 0, packet_type: 'GroupText',
     })
     expect('text' in rec).toBe(false)

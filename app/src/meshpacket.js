@@ -1,4 +1,4 @@
-import { getPayloadTypeName } from './decode.js'
+import { getPayloadTypeName, getDeviceRoleName } from './decode.js'
 
 const PT_ADVERT = 4
 const PT_GROUP_TEXT = 5
@@ -25,13 +25,20 @@ export function classifyReception(decoded, channelNameFor = () => null) {
   let text = null
 
   if (pt === PT_ADVERT && d.publicKey) {
-    sender = { kind: 'advert_pubkey', id: d.publicKey.toLowerCase(), label: (d.appData && d.appData.name) || null }
+    const role = d.appData && d.appData.deviceRole != null ? getDeviceRoleName(d.appData.deviceRole) : null
+    sender = { kind: 'advert_pubkey', id: d.publicKey.toLowerCase(), role, label: (d.appData && d.appData.name) || null }
   } else if (pt === PT_GROUP_TEXT) {
     channel = channelNameFor(d.channelHash)
     if (d.decrypted && d.decrypted.sender) {
       sender = { kind: 'channel_name', id: d.decrypted.sender, label: d.decrypted.sender }
       text = d.decrypted.message || null
     }
+  } else if (d.publicKey) {
+    // Discover/Control reply: carries the responding node's pubkey prefix + type
+    // (that's what a discover is FOR — which, and what kind of, nodes are nearby).
+    // No name in the packet → label stays null so the name is resolved by ID later.
+    const id = d.publicKey.toLowerCase()
+    sender = { kind: 'discover_pubkey', id, role: d.nodeTypeName || null, label: null }
   } else if (d.sourceHash) {
     const id = String(d.sourceHash).toLowerCase()
     sender = { kind: 'direct_hash', id, label: id }

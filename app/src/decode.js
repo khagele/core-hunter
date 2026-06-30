@@ -1,4 +1,4 @@
-import { MeshCoreDecoder, getPayloadTypeName, bytesToHex as _bytesToHex } from '@michaelhart/meshcore-decoder'
+import { MeshCoreDecoder, getPayloadTypeName, getDeviceRoleName, bytesToHex as _bytesToHex } from '@michaelhart/meshcore-decoder'
 import CryptoJS from 'crypto-js'
 
 // Wrap the decoder's uppercase bytesToHex to return lowercase (consistent with the rest of the codebase).
@@ -47,4 +47,4 @@ export function channelNameFor(channelHash) {
   return hashToName[String(channelHash).toLowerCase()] || null
 }
 
-export { getPayloadTypeName }
+export { getPayloadTypeName, getDeviceRoleName }
