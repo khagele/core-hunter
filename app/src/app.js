@@ -23,6 +23,7 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
 import { sinceLabel } from './elapsed.js'
+import { effectivePlotOffset } from './signal.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
@@ -68,6 +69,17 @@ function saveManualFix(fix) {
 
 const initialManualFix = loadManualFix()
 
+// Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to
+// plotted RSSI so the picture stays consistent when an external attenuator is on.
+function loadAttenuator() {
+  const v = Number(localStorage.getItem('core-hunter-attenuator'))
+  return v === -10 || v === -20 || v === -30 ? v : 0
+}
+
+function saveAttenuator(db) {
+  try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
 const state = {
   transport: null,
   gps: new Gps(),
@@ -86,6 +98,7 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   manualFix: initialManualFix,
+  attenuatorDb: loadAttenuator(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
@@ -130,8 +143,8 @@ function updateHud(rec) {
   // Secondary: SNR (small muted)
   el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : 'SNR —'
 
-  // Thermal bar marker — continuous position from RSSI
-  const offset = (getConfig() && getConfig().rssiCalibrationOffset) || 0
+  // Thermal bar marker — continuous position from RSSI (calibration + attenuator)
+  const offset = effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb)
   const pct = rssiToPct(rec.rssi, offset)
   el('hud-bar-marker').style.left = pct + '%'
 }
@@ -559,6 +572,18 @@ function buildSettingsSheet() {
         </dl>
         <button id="ss-disconnect" class="ss-disconnect" disabled>Disconnect</button>
       </div>
+      <div class="ss-radio-section">
+        <h3>Radio</h3>
+        <label class="ss-radio-row">
+          <span>Attenuator</span>
+          <select id="ss-atten">
+            <option value="0">0 dB</option>
+            <option value="-10">−10 dB</option>
+            <option value="-20">−20 dB</option>
+            <option value="-30">−30 dB</option>
+          </select>
+        </label>
+      </div>
       <label>
         <input type="checkbox" id="ss-theme" />
         Light theme
@@ -590,6 +615,14 @@ function buildSettingsSheet() {
     sheet.hidden = true
   })
   refreshConnState()
+
+  const atten = el('ss-atten')
+  atten.value = String(state.attenuatorDb)
+  atten.addEventListener('change', () => {
+    state.attenuatorDb = Number(atten.value) || 0
+    saveAttenuator(state.attenuatorDb)
+    if (state.map) state.map.setAttenuator(state.attenuatorDb)
+  })
 
   const chk = el('ss-theme')
   chk.checked = document.documentElement.dataset.theme === 'light'
@@ -697,6 +730,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Initialise map
   state.map = createHuntMap('map')
+  state.map.setAttenuator(state.attenuatorDb)
 
   // Initialise feed panel
   state.feed = createFeedPanel('feed-panel', {

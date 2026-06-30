@@ -10,6 +10,15 @@ export function tierColorVar(tier) { return `--ch-sig-${tier}` }
 const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.24, none: 0.18 }
 export function fillOpacity(tier) { return OPACITY[tier] ?? 0.18 }
 
+// effectivePlotOffset combines the per-device calibration offset with the active
+// attenuator setting. An attenuator lowers the measured RSSI, so its magnitude is
+// added back for plotting — attenuatorDb is the (non-positive) setting (e.g. -20),
+// and subtracting it adds +20 on top of the calibration. Display-only: stored and
+// published RSSI stay raw.
+export function effectivePlotOffset(calibrationOffset = 0, attenuatorDb = 0) {
+  return (calibrationOffset || 0) - (attenuatorDb || 0)
+}
+
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
 export function rssiTier(rssi, offset = 0) {

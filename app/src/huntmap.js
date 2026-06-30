@@ -1,13 +1,17 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset } from './signal.js'
 import { getConfig } from './config.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
   const cfg = getConfig()
-  const offset = (cfg && cfg.rssiCalibrationOffset) || 0
+  const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
+  // Plot offset = calibration + attenuator added back. Attenuator is set at
+  // runtime (settings), so the offset is computed per render, not captured once.
+  let attenuatorDb = 0
+  const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
   const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
   const TILES = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -41,7 +45,7 @@ export function createHuntMap(containerId) {
   })
 
   function pointStyle(rec) {
-    const tier = rssiTier(rec.rssi, offset)
+    const tier = rssiTier(rec.rssi, currentOffset())
     const color = cssVar(tierColorVar(tier))
     return {
       radius: 8,
@@ -94,7 +98,7 @@ export function createHuntMap(containerId) {
       for (const [id, c] of cells) {
         // hexBoundary returns [lat,lon] pairs (closed ring) — directly usable by L.polygon
         const ring = hexBoundary(id); if (!ring) continue
-        const tier = rssiTier(c.best, offset)
+        const tier = rssiTier(c.best, currentOffset())
         L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1,
           fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) }).addTo(hexLayer)
       }
@@ -121,6 +125,9 @@ export function createHuntMap(containerId) {
   // flips (false when the user pans away, true on recenter).
   function onFollowChange(cb) { onFollow = cb }
   function setLayerMode(m) { mode = m }
+  // setAttenuator updates the runtime attenuator (dB) used in the plot offset.
+  // The next render tick repaints with the new tiers.
+  function setAttenuator(db) { attenuatorDb = Number(db) || 0 }
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)
@@ -129,7 +136,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, focusReception, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
 }
 
 function popupHtml(r) {
