@@ -290,15 +290,40 @@ async function connectAll() {
     // 5. Register frame handler
     state.transport.onFrame(processFrame)
 
-    btn.textContent = 'Disconnect'
-    btn.disabled = false
+    setHuntingChrome(true)
     el('discover-btn').disabled = false
+    refreshConnState()
   } catch (e) {
     console.error('[connect]', e)
     btn.textContent = 'Connect (retry)'
     btn.disabled = false
     await disconnectAll(true)
   }
+}
+
+// Once connected the Connect button and the (non-interactive) thermal bar are
+// hidden so the hunting HUD is just the live readout + map. They stay visible
+// during "Connecting…" and reappear on disconnect.
+function setHuntingChrome(connected) {
+  el('connect-btn').hidden = connected
+  el('hud-bar').hidden = connected
+  el('hud-bar-labels').hidden = connected
+  // HUD height changed → recompute --ch-hud-h (drives the #feed-panel offset)
+  window.dispatchEvent(new Event('resize'))
+}
+
+// Mirror the connection state into the BLE-settings Connection section. No-op
+// until the settings sheet has been built.
+function refreshConnState() {
+  const dc = el('ss-disconnect')
+  if (!dc) return
+  const connected = state.connected
+  dc.disabled = !connected
+  el('ss-conn-name').textContent = state.name || '—'
+  el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
+  el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
+  el('ss-conn-mqtt').textContent =
+    state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected'
 }
 
 async function disconnectAll(silent) {
@@ -314,6 +339,9 @@ async function disconnectAll(silent) {
     try { await state.transport.disconnect() } catch (_) {}
     state.transport = null
   }
+
+  setHuntingChrome(false)
+  refreshConnState()
 
   if (!silent) {
     const btn = el('connect-btn')
@@ -448,6 +476,16 @@ function buildSettingsSheet() {
   sheet.innerHTML = `
     <div class="settings-sheet-inner">
       <h2>Settings</h2>
+      <div class="ss-conn-section">
+        <h3>Connection</h3>
+        <dl class="ss-conn-status">
+          <dt>Companion</dt><dd id="ss-conn-name">—</dd>
+          <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
+          <dt>BLE</dt><dd id="ss-conn-ble">—</dd>
+          <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
+        </dl>
+        <button id="ss-disconnect" class="ss-disconnect" disabled>Disconnect</button>
+      </div>
       <label>
         <input type="checkbox" id="ss-theme" />
         Light theme
@@ -479,6 +517,12 @@ function buildSettingsSheet() {
       <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
       <button id="ss-close">Done</button>
     </div>`
+
+  el('ss-disconnect').addEventListener('click', () => {
+    disconnectAll()
+    sheet.hidden = true
+  })
+  refreshConnState()
 
   const chk = el('ss-theme')
   chk.checked = document.documentElement.dataset.theme === 'light'
@@ -615,8 +659,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Wire controls
   el('connect-btn').addEventListener('click', () => {
-    if (state.connected) disconnectAll()
-    else { state.wakeLock.enable(); connectAll() }
+    if (!state.connected) { state.wakeLock.enable(); connectAll() }
   })
 
   el('discover-btn').addEventListener('click', sendDiscover)
@@ -641,6 +684,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       el('filter-sheet').hidden = true
       renderIgnoreList(el('ss-ignore-list'))
       updateManualFixStatus(el('ss-manfix-status'))
+      refreshConnState()
     }
   })
 

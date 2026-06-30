@@ -89,6 +89,17 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
   border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }
 [hidden] { display: none !important; }
+.ss-conn-section { margin-top: 12px; }
+.ss-conn-status { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 10px;
+  font-size: 13px; }
+.ss-conn-status dt { color: var(--ch-muted); }
+.ss-conn-status dd { margin: 0; color: var(--ch-text);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; }
+.ss-disconnect { border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
+  background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
+  font-family: system-ui, sans-serif; cursor: pointer; }
+.ss-disconnect:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
+  opacity: 0.45; }
 .ss-manfix-section { margin-top: 16px; }
 .ss-manfix-inputs { display: flex; gap: 12px; margin-top: 8px; }
 .ss-manfix-label { display: flex; flex-direction: column; font-size: 13px; color: var(--ch-muted); gap: 4px; }
