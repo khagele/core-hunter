@@ -24,7 +24,13 @@
   <script type="module" src="map.js"></script>
   <script type="module">
     import { VERSION } from './version.js';
-    document.getElementById('ch-version').textContent = 'v' + VERSION;
+    import { API_BASE } from './config.js';
+    const el = document.getElementById('ch-version');
+    el.textContent = 'web v' + VERSION;
+    fetch(`${API_BASE}/api/version`)
+      .then((r) => r.json())
+      .then((d) => { if (d.server) el.textContent = `web v${VERSION} · srv v${d.server}`; })
+      .catch(() => {});
   </script>
 </body>
 </html>

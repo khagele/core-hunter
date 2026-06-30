@@ -9,6 +9,7 @@ import (
 	"github.com/efiten/core-hunter/server/internal/geo"
 	"github.com/efiten/core-hunter/server/internal/query"
 	"github.com/efiten/core-hunter/server/internal/store"
+	"github.com/efiten/core-hunter/server/internal/version"
 )
 
 func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
@@ -66,5 +67,8 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string) {
 		hs, err := s.Hunters(f.From, f.To, f.Ignore)
 		if err != nil { http.Error(w, err.Error(), 500); return }
 		writeJSON(w, map[string]any{"hunters": hs})
+	})
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"server": version.Version})
 	})
 }
