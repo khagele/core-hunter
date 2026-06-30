@@ -46,7 +46,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 const heatmapCap = 50000
 
-func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string) {
+func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *store.CSReader) {
 	mux.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
 		pts, trunc, err := s.QueryPoints(filterFrom(r, ignore))
 		if err != nil { http.Error(w, err.Error(), 500); return }
@@ -70,5 +70,24 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string) {
 	})
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"server": version.Version})
+	})
+	// CoreScope mobile-observer points (extra optional map layers). src selects
+	// the layer: advert (zero-hop nodes) or rxlog (last-hop repeaters).
+	mux.HandleFunc("/api/observer-points", func(w http.ResponseWriter, r *http.Request) {
+		if cs == nil { // feature disabled (no CoreScope DB configured)
+			writeJSON(w, map[string]any{"points": []store.ObserverPoint{}})
+			return
+		}
+		q := r.URL.Query()
+		src := q.Get("src")
+		if src != "advert" && src != "rxlog" {
+			http.Error(w, "src must be advert or rxlog", 400)
+			return
+		}
+		limit := 0
+		if n, err := strconv.Atoi(q.Get("limit")); err == nil { limit = n }
+		pts, err := cs.ObserverPoints(src, q.Get("from"), q.Get("to"), limit)
+		if err != nil { http.Error(w, err.Error(), 500); return }
+		writeJSON(w, map[string]any{"points": pts})
 	})
 }

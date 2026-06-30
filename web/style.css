@@ -16,6 +16,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
+.cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 #status { color:var(--ch-muted); margin-left:auto; }
 #ch-version { color:var(--ch-muted); font-size:12px; }
 #map { position:fixed; inset:0; top:48px; }
