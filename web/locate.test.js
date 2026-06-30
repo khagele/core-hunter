@@ -47,3 +47,32 @@ describe('weightedCentroid', () => {
     expect(weightedCentroid([{ lat: 1, lon: 1, rssi: -130 }])).toBeNull()
   })
 })
+
+import { rejectOutliers } from './locate.js'
+
+describe('rejectOutliers', () => {
+  const cluster = [
+    { lat: 51.0000, lon: 4.0000, rssi: -70 },
+    { lat: 51.0002, lon: 4.0001, rssi: -72 },
+    { lat: 51.0001, lon: 4.0003, rssi: -75 },
+    { lat: 50.9999, lon: 3.9998, rssi: -73 },
+  ]
+
+  it('flags a single far stray (colliding node) and keeps the cluster', () => {
+    const stray = { lat: 51.5, lon: 4.6, rssi: -95 } // ~70 km away
+    const { inliers, outliers } = rejectOutliers([...cluster, stray])
+    expect(outliers).toHaveLength(1)
+    expect(outliers[0]).toEqual(stray)
+    expect(inliers).toHaveLength(4)
+  })
+
+  it('flags nothing for a tight stationary cluster (GPS jitter only)', () => {
+    const { outliers } = rejectOutliers(cluster)
+    expect(outliers).toHaveLength(0)
+  })
+
+  it('returns all inliers when fewer than 3 points', () => {
+    const two = cluster.slice(0, 2)
+    expect(rejectOutliers(two)).toEqual({ inliers: two, outliers: [] })
+  })
+})

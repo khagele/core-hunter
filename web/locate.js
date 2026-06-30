@@ -34,3 +34,34 @@ export function weightedCentroid(points) {
   if (sw === 0) return null
   return { lat: slat / sw, lon: slon / sw }
 }
+
+const OUTLIER_FACTOR = 4
+const MIN_OUTLIER_M = 200
+
+// Median of a numeric array (0 for empty).
+function median(xs) {
+  if (!xs.length) return 0
+  const s = [...xs].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+// Split points into inliers/outliers. Robust center = coordinate-wise median;
+// outlier if distance > max(factor * medianDistance, floorM). This catches a
+// lone far stray (a colliding 1-byte node) without flagging GPS jitter in a
+// tight/stationary cluster (where MAD would collapse to 0).
+export function rejectOutliers(points, opts = {}) {
+  const factor = opts.factor ?? OUTLIER_FACTOR
+  const floorM = opts.floorM ?? MIN_OUTLIER_M
+  if (points.length < 3) return { inliers: points.slice(), outliers: [] }
+  const center = {
+    lat: median(points.map((p) => p.lat)),
+    lon: median(points.map((p) => p.lon)),
+  }
+  const dists = points.map((p) => haversineM(p, center))
+  const threshold = Math.max(factor * median(dists), floorM)
+  const inliers = []
+  const outliers = []
+  points.forEach((p, i) => (dists[i] > threshold ? outliers : inliers).push(p))
+  return { inliers, outliers }
+}
