@@ -154,10 +154,10 @@ import { locate } from './locate.js'
 
 describe('locate', () => {
   const pts = [
-    { lat: 51.000, lon: 4.000, rssi: -60, acc_m: 8 },
-    { lat: 51.002, lon: 4.001, rssi: -72, acc_m: 8 },
-    { lat: 50.999, lon: 3.998, rssi: -75, acc_m: 8 },
-    { lat: 51.001, lon: 4.003, rssi: -80, acc_m: 8 },
+    { lat: 51.000, lon: 4.000, rssi: -60 },
+    { lat: 51.002, lon: 4.001, rssi: -72 },
+    { lat: 50.999, lon: 3.998, rssi: -75 },
+    { lat: 51.001, lon: 4.003, rssi: -80 },
   ]
 
   it('produces a centroid, heatmap and stats for enough inliers', () => {
@@ -169,7 +169,7 @@ describe('locate', () => {
   })
 
   it('separates a far stray into outliers and excludes it from the centroid', () => {
-    const stray = { lat: 52.0, lon: 5.0, rssi: -95, acc_m: 8 }
+    const stray = { lat: 52.0, lon: 5.0, rssi: -95 }
     const res = locate([...pts, stray])
     expect(res.outliers).toContainEqual(stray)
     expect(res.centroid.lat).toBeLessThan(51.01) // stray did not drag it north

@@ -112,7 +112,7 @@ export function geometryStats(points, centroid) {
     const w = rssiWeight(p.rssi)
     const d = haversineM(p, centroid)
     sw += w; swd2 += w * d * d
-    const ang = Math.atan2(p.lon - centroid.lon, p.lat - centroid.lat) // [-pi, pi]
+    const ang = Math.atan2((p.lon - centroid.lon) * Math.cos(centroid.lat * Math.PI / 180), p.lat - centroid.lat) // [-pi, pi]
     const sector = (Math.floor((ang + Math.PI) / (Math.PI / 4)) % 8 + 8) % 8
     sectors[sector] = true
   }

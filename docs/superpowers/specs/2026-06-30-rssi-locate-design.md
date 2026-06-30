@@ -65,8 +65,8 @@ Input: `[{lat, lon, rssi, acc_m}]`.
    that would bias the centroid.
 2. **Weighted centroid** over inliers. Weight `wᵢ` increases with signal (normalized
    RSSI on a ~−120..−40 dBm scale, or `10^(rssi/10)`); optional strongest-N
-   robustification. `p̂ = Σ wᵢ·posᵢ / Σ wᵢ`. Down-weight points with poor GPS (high
-   `acc_m`).
+   robustification. `p̂ = Σ wᵢ·posᵢ / Σ wᵢ`. (GPS-accuracy down-weighting via `acc_m`
+   is deferred — see Phase 2.)
 3. **Kernel-density heatmap.** Grid over the inlier bounding box (~60×60 cells, adaptive
    to zoom). Each inlier adds a Gaussian kernel weighted by RSSI (stronger = taller,
    narrower). Sum per cell, normalize 0..1 → existing heat tokens. This is the
@@ -114,6 +114,11 @@ encirclement (one-sided vs surrounded), `< 3`-points edge.
   exponent from the data) for a rigorous likelihood surface.
 - **"Not-heard" negative evidence** (locations where the node was *not* heard bound the
   area).
+- **GPS-accuracy down-weighting** — weight each point by `acc_m` (a 100 m fix should count
+  less than a 5 m fix). Plumbed-but-unused for now; left out of v1 to avoid untested weight
+  tuning.
+- **Heatmap cost** — the kernel grid is O(rows·cols·N) haversines per poll (~4096·N every
+  5 s); fine for typical N, revisit (downsample / web worker) for very busy senders.
 - Shareable/persisted locate sessions.
 
 ## References (research, 2026-06-30)

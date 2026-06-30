@@ -169,7 +169,7 @@ function updateLocateInfo(res, senderId) {
     box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+).</div>`
     return
   }
-  const isHash = !!senderId && senderId.length < 64
+  const isHash = !!senderId && !isFullPubkey(senderId)
   const radius = s.searchRadiusM != null ? Math.round(s.searchRadiusM) + ' m' : '—'
   const enc = Math.round(s.encirclement * 100)
   const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — drive around the estimate to tighten.</div>' : ''
@@ -181,7 +181,7 @@ function updateLocateInfo(res, senderId) {
 }
 
 // Test hook: render a supplied point array (no API needed).
-window.__locateRender = (points, senderId = 'efef79') => renderLocate(points, senderId)
+window.__locateRender = (points, senderId = 'efef79') => { locateActive = true; renderLocate(points, senderId) }
 
 // Build a sender-scoped, bbox-less query for /api/points (all of this node's
 // receptions across all hunters, full timeframe — not viewport-limited).
@@ -197,8 +197,10 @@ async function drawLocate() {
   const box = document.getElementById('locate-info')
   if (!f.sender) {
     locateLayer.clearLayers()
-    box.hidden = false
-    box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Enter a sender ID to locate.</div>'
+    if (locateActive) {
+      box.hidden = false
+      box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Enter a sender ID to locate.</div>'
+    }
     return
   }
   let d
@@ -207,11 +209,13 @@ async function drawLocate() {
     if (!r.ok) throw new Error(`points ${r.status}`)
     d = await r.json()
   } catch (e) {
-    box.hidden = false
-    box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Could not load points — retrying…</div>'
+    if (locateActive) {
+      box.hidden = false
+      box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Could not load points — retrying…</div>'
+    }
     return
   }
-  const points = (d.points || []).map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi, acc_m: p.acc_m }))
+  const points = (d.points || []).map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
   renderLocate(points, f.sender)
 }
 
