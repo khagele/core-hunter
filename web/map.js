@@ -19,11 +19,13 @@ const locateLayer = L.layerGroup().addTo(map)
 let locateActive = false
 let locateTimer = null
 
-// Heat ramp built from the existing --ch-sig-* tokens (cold -> hot), so the
-// canvas honours the CSS-variable colour rule. Returns [r,g,b].
+// Density-cloud ramp from the --ch-sig-* tokens (warm -> hot only: yellow ->
+// orange -> red), so the canvas honours the CSS-variable colour rule. The cold
+// end is intentionally excluded — low density is not "cold signal", and a blue
+// floor read as a spurious halo around the hotspot. Returns [r,g,b].
 function heatStops() {
   const hex = (h) => { const s = h.replace('#', '').trim(); const n = s.length === 3 ? s.split('').map((x) => x + x).join('') : s; return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)] }
-  return ['--ch-sig-cold', '--ch-sig-cool', '--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
+  return ['--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
 }
 function heatColor(v, stops) {
   const t = Math.max(0, Math.min(1, v)) * (stops.length - 1)
@@ -122,6 +124,9 @@ function heatmapOverlay(hm) {
   const ctx = canvas.getContext('2d')
   const img = ctx.createImageData(cols, rows)
   const stops = heatStops()
+  // Gate out the low-density floor: cells below FLOOR stay fully transparent, so
+  // the bounding-box rectangle and faint haze disappear; above it, alpha ramps up.
+  const FLOOR = 0.12
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const v = grid[r * cols + c]
@@ -129,7 +134,7 @@ function heatmapOverlay(hm) {
       const idx = (y * cols + c) * 4
       const [cr, cg, cb] = heatColor(v, stops)
       img.data[idx] = cr; img.data[idx + 1] = cg; img.data[idx + 2] = cb
-      img.data[idx + 3] = Math.round(190 * v) // alpha by intensity
+      img.data[idx + 3] = v < FLOOR ? 0 : Math.round(210 * (v - FLOOR) / (1 - FLOOR))
     }
   }
   ctx.putImageData(img, 0, 0)
