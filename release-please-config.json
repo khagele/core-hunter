@@ -27,6 +27,13 @@
       "extra-files": [
         "internal/version/version.go"
       ]
+    },
+    "web": {
+      "release-type": "simple",
+      "component": "web",
+      "extra-files": [
+        "version.js"
+      ]
     }
   }
 }

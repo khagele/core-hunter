@@ -16,10 +16,15 @@
     <button id="layer-toggle">points</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
     <span id="status"></span>
+    <span id="ch-version"></span>
   </header>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script type="module" src="filters.js"></script>
   <script type="module" src="map.js"></script>
+  <script type="module">
+    import { VERSION } from './version.js';
+    document.getElementById('ch-version').textContent = 'v' + VERSION;
+  </script>
 </body>
 </html>

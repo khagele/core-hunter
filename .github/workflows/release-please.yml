@@ -32,6 +32,8 @@ jobs:
           APP_TAG: ${{ steps.release.outputs['app--tag_name'] }}
           SERVER_RELEASED: ${{ steps.release.outputs['server--release_created'] }}
           SERVER_TAG: ${{ steps.release.outputs['server--tag_name'] }}
+          WEB_RELEASED: ${{ steps.release.outputs['web--release_created'] }}
+          WEB_TAG: ${{ steps.release.outputs['web--tag_name'] }}
         run: |
           set -euo pipefail
           if [ "${APP_RELEASED:-}" = "true" ]; then
@@ -39,4 +41,7 @@ jobs:
           fi
           if [ "${SERVER_RELEASED:-}" = "true" ]; then
             gh release edit "$SERVER_TAG" --notes-file server/CHANGELOG.md
+          fi
+          if [ "${WEB_RELEASED:-}" = "true" ]; then
+            gh release edit "$WEB_TAG" --notes-file web/CHANGELOG.md
           fi
