@@ -25,6 +25,7 @@ import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
 import { sinceLabel } from './elapsed.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
+import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
@@ -77,6 +78,7 @@ const state = {
   name: '',
   map: null,
   feed: null,
+  targetList: null,
   connected: false,
   wakeLock: null,
   // Drain dedup: in-memory Set of row ids already published this session.
@@ -227,6 +229,7 @@ async function renderTick() {
       state.map.render(rows.filter((r) => fn(r, now)), now)
     }
     if (state.feed) state.feed.render(feedItems(rows, { ignore: state.ignore, limit: 50 }), now)
+    if (state.targetList) state.targetList.render(rows, state.ignore, now)
   } catch (_) {
     // silent — render failure must not crash the loop
   }
@@ -498,6 +501,41 @@ function buildFilterSheet() {
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
 }
 
+function buildTargetSheet() {
+  const sheet = el('target-sheet')
+  sheet.innerHTML = `
+    <div class="target-sheet-inner">
+      <div class="sheet-head">
+        <h2>Target</h2>
+        <button class="sheet-close" id="ts-close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
+      <button type="button" id="ts-clear" class="tl-clear" hidden>Clear target (showing all)</button>
+      <div class="tl-pinned-label">Top</div>
+      <ul id="ts-pinned" class="tl-list tl-pinned"></ul>
+      <div class="tl-pinned-label">All senders</div>
+      <ul id="ts-list" class="tl-list"></ul>
+    </div>`
+
+  state.targetList = createTargetList(el('ts-list'), {
+    pinnedEl: el('ts-pinned'),
+    onSelect: (id) => {
+      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id } }))
+      sheet.hidden = true
+    },
+  })
+
+  el('ts-clear').addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: null }))
+    sheet.hidden = true
+  })
+
+  el('ts-close').addEventListener('click', () => { sheet.hidden = true })
+}
+
 function renderIgnoreList(listEl) {
   listEl.innerHTML = ''
   if (state.ignore.size === 0) {
@@ -666,6 +704,8 @@ document.addEventListener('hunt:isolate-sender', (e) => {
     chip.textContent = 'No target'
     chip.classList.remove('active')
   }
+  const clearBtn = el('ts-clear')
+  if (clearBtn) clearBtn.hidden = !state.filter.sender
   refreshFilterIndicator()
 })
 
@@ -717,6 +757,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Build sheets (static HTML injected once)
   buildFilterSheet()
   buildSettingsSheet()
+  buildTargetSheet()
 
   // Wire controls
   el('connect-btn').addEventListener('click', () => {
@@ -737,6 +778,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) {
       el('settings-sheet').hidden = true
+      el('target-sheet').hidden = true
       renderIgnoreList(el('ss-ignore-list'))
     }
   })
@@ -746,15 +788,21 @@ window.addEventListener('DOMContentLoaded', async () => {
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
+      el('target-sheet').hidden = true
       updateManualFixStatus(el('ss-manfix-status'))
       refreshConnState()
     }
   })
 
-  // Target chip tap → clear isolation
+  // Target chip tap → open the target dropdown
   el('target-chip').addEventListener('click', () => {
-    if (state.filter.sender) {
-      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: null }))
+    const sheet = el('target-sheet')
+    sheet.hidden = !sheet.hidden
+    if (!sheet.hidden) {
+      el('filter-sheet').hidden = true
+      el('settings-sheet').hidden = true
+      el('ts-clear').hidden = !state.filter.sender
+      state.targetList.reset()
     }
   })
 
