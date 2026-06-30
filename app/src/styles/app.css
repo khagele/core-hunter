@@ -33,6 +33,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #hud-snr { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 
+/* Time since last packet — pushed to the right edge of the readout row */
+#hud-since { margin-left: auto; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+
 /* Thermal bar: always-visible full gradient + marker */
 #hud-bar { position: relative; height: 9px; border-radius: 5px; overflow: visible; }
 #hud-bar-fill { position: absolute; inset: 0; border-radius: 5px;
