@@ -182,3 +182,59 @@ describe('locate', () => {
     expect(res.stats.searchRadiusM).toBeNull()
   })
 })
+
+import { dedupeSpatial } from './locate.js'
+
+describe('dedupeSpatial', () => {
+  it('collapses co-located points to one, keeping the strongest RSSI', () => {
+    const out = dedupeSpatial([
+      { lat: 51, lon: 4, rssi: -80 },
+      { lat: 51, lon: 4, rssi: -60 },
+      { lat: 51, lon: 4, rssi: -90 },
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].rssi).toBe(-60)
+  })
+  it('keeps points more than a cell apart', () => {
+    const out = dedupeSpatial([
+      { lat: 51.00, lon: 4.00, rssi: -70 },
+      { lat: 51.01, lon: 4.00, rssi: -70 }, // ~1.1 km north
+      { lat: 51.00, lon: 4.01, rssi: -70 }, // ~0.7 km east
+    ])
+    expect(out).toHaveLength(3)
+  })
+  it('returns a copy for < 2 points', () => {
+    const p = [{ lat: 51, lon: 4, rssi: -70 }]
+    expect(dedupeSpatial(p)).toEqual(p)
+  })
+})
+
+describe('rejectOutliers — 20 km reception-region floor', () => {
+  const cluster = [
+    { lat: 51.000, lon: 4.000, rssi: -70 },
+    { lat: 51.001, lon: 4.000, rssi: -72 },
+    { lat: 50.999, lon: 4.000, rssi: -73 },
+  ]
+  it('keeps a point 5 km out (within reception region)', () => {
+    const far5 = { lat: 51.045, lon: 4.0, rssi: -95 } // ~5 km north
+    expect(rejectOutliers([...cluster, far5]).outliers).toHaveLength(0)
+  })
+  it('flags a point 25 km out (a genuine far collision)', () => {
+    const far25 = { lat: 51.225, lon: 4.0, rssi: -95 } // ~25 km north
+    expect(rejectOutliers([...cluster, far25]).outliers).toEqual([far25])
+  })
+})
+
+describe('locate — dedupe stops a parked hunter from dominating', () => {
+  it('collapses a stationary stack and keeps an honest (non-tiny) search radius', () => {
+    const parked = Array.from({ length: 30 }, () => ({ lat: 51.0, lon: 4.0, rssi: -55 }))
+    const drive = [
+      { lat: 51.02, lon: 4.00, rssi: -90 },
+      { lat: 50.98, lon: 4.00, rssi: -90 },
+      { lat: 51.00, lon: 4.03, rssi: -90 },
+    ]
+    const res = locate([...parked, ...drive])
+    expect(res.inliers).toHaveLength(4) // 30 parked -> 1, + 3 drive
+    expect(res.stats.searchRadiusM).toBeGreaterThan(500) // no collapse to 1-3 m
+  })
+})

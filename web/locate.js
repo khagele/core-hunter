@@ -36,7 +36,11 @@ export function weightedCentroid(points) {
 }
 
 const OUTLIER_FACTOR = 4
-const MIN_OUTLIER_M = 200
+// Never reject within the reception region: zero-hop LoRa (868 MHz) can reach
+// 10–15 km in good conditions, so only a same-1-byte-prefix node well beyond
+// that (a genuine collision) should ever be dropped. 20 km floor.
+const MIN_OUTLIER_M = 20000
+const DEFAULT_CELL_M = 10
 
 // Median of a numeric array (0 for empty).
 function median(xs) {
@@ -141,11 +145,33 @@ export function rejectOutliers(points, opts = {}) {
   return { inliers, outliers }
 }
 
-// Full estimate from raw receive points [{lat,lon,rssi,acc_m}]. Rejects outliers,
-// then computes the weighted centroid, density heatmap and geometry stats over the
-// inliers. centroid/heatmap are null when fewer than 3 inliers remain.
+// Spatial dedupe: collapse receptions within ~cellM metres to one representative
+// (the strongest-RSSI sample in the cell). A stationary/parked hunter logs many
+// near-identical points; without this they dominate the weight and collapse the
+// estimate onto the parking spot. Driving points (usually > cellM apart) survive,
+// preserving the geometry. Binning uses a local equirectangular projection.
+export function dedupeSpatial(points, cellM = DEFAULT_CELL_M) {
+  if (points.length < 2) return points.slice()
+  const mPerDegLat = 111320
+  const mPerDegLon = 111320 * Math.cos((points[0].lat * Math.PI) / 180)
+  const best = new Map()
+  for (const p of points) {
+    const cx = Math.round((p.lon * mPerDegLon) / cellM)
+    const cy = Math.round((p.lat * mPerDegLat) / cellM)
+    const key = cx + ':' + cy
+    const cur = best.get(key)
+    if (!cur || (p.rssi ?? -Infinity) > (cur.rssi ?? -Infinity)) best.set(key, p)
+  }
+  return [...best.values()]
+}
+
+// Full estimate from raw receive points [{lat,lon,rssi}]. Spatially dedupes
+// (so a parked hunter doesn't dominate), rejects far-out collisions, then computes
+// the weighted centroid, density heatmap and geometry stats over the inliers.
+// centroid/heatmap are null when fewer than 3 inliers remain.
 export function locate(points, opts = {}) {
-  const { inliers, outliers } = rejectOutliers(points, opts)
+  const deduped = dedupeSpatial(points, opts.cellM ?? DEFAULT_CELL_M)
+  const { inliers, outliers } = rejectOutliers(deduped, opts)
   if (inliers.length < 3) {
     return {
       centroid: null, heatmap: null, inliers, outliers,
