@@ -10,6 +10,28 @@ import { getConfig } from './config.js';
 
 const cache = new Map(); // key (lowercase hex) -> name | ''
 
+// A full MeshCore public key is 32 bytes = 64 lowercase-hex chars. Only these
+// can be resolved unambiguously; 1-byte path/source hashes (2 hex) cannot.
+const FULL_PUBKEY = /^[0-9a-f]{64}$/i;
+export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.test(id); }
+
+// resolvableKey decides whether a reception's sender should be looked up.
+// Fill-only: skip when a name is already present (advert appData.name, channel
+// sender). Resolve only when the sender_id is a full pubkey (advert/discover) —
+// never a 1-byte hash. Returns the lowercase key to resolve, or null.
+export function resolvableKey(rec) {
+  if (!rec || rec.sender_label) return null;
+  return isFullPubkey(rec.sender_id) ? rec.sender_id.toLowerCase() : null;
+}
+
+// cachedName returns a previously-resolved name ('' = resolved-but-unknown) for
+// a key, or undefined when it has not been resolved yet. Synchronous — safe to
+// call from a render loop; pair with a fire-and-forget resolveName() for misses.
+export function cachedName(key) {
+  const k = String(key).toLowerCase();
+  return cache.has(k) ? cache.get(k) : undefined;
+}
+
 // orderResolvers returns a new array with resolvers whose sf matches
 // companionSf placed first (preserving their relative order), followed by the
 // rest in their original order. When companionSf is null/undefined (or no

@@ -44,7 +44,9 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
 
   function render(items, nowMs) {
     countEl.textContent = '(' + items.length + ')'
-    const sig = items.length + '|' + (items[0] ? items[0].sender_id + items[0].rx_at : '')
+    // Key on the displayed label too, so a name resolved after the row first
+    // appeared (async CoreScope lookup) repaints instead of being suppressed.
+    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rx_at).join('|')
     if (sig === _lastSig) return
     _lastSig = sig
     list.replaceChildren(...items.map((rec) => row(rec, nowMs)))

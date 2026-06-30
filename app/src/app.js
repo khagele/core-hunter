@@ -24,6 +24,7 @@ import { createHuntMap } from './huntmap.js'
 import { makeFilter } from './filters.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
+import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
 
@@ -162,11 +163,26 @@ async function processFrame(dv) {
 // queue.takeAll() uses a readonly IDB transaction (getAll) — it does NOT
 // delete rows. It is safe to call it from the render path.
 
+// enrichNames fills sender_label from the CoreScope resolver for senders whose
+// full pubkey is known but have no name yet. Cache hits are applied in-place;
+// misses fire a one-shot lookup that populates the cache for a later tick (the
+// row objects are fresh from IndexedDB each tick, so mutation is local).
+function enrichNames(rows) {
+  for (const r of rows) {
+    const key = resolvableKey(r)
+    if (!key) continue
+    const hit = cachedName(key)
+    if (hit === undefined) resolveName(key).catch(() => {})
+    else if (hit) r.sender_label = hit
+  }
+}
+
 async function renderTick() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
     const rows = await state.queue.takeAll()
     const now = Date.now()
+    enrichNames(rows)
     if (state.map) {
       const fn = makeFilter({ ...state.filter, ignore: state.ignore })
       state.map.render(rows.filter((r) => fn(r, now)), now)

@@ -1,5 +1,6 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
+import { resolveName, cachedName, isFullPubkey, senderName } from './names.js'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -32,13 +33,23 @@ function qs() {
 async function drawPoints() {
   pointLayer.clearLayers()
   const r = await fetch(`${API_BASE}/api/points?${qs()}`); const d = await r.json()
+  const unresolved = new Set()
   for (const pt of d.points || []) {
+    if (!pt.sender_label && isFullPubkey(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
+      unresolved.add(pt.sender_id.toLowerCase())
+    }
     const tier = rssiTier(pt.rssi)
     L.circleMarker([pt.lat, pt.lon], { radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(pt.sender_label || pt.sender_id || '—')}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}`)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}`)
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${(d.points||[]).length} points${d.truncated ? ' (capped)' : ''}`
+  // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
+  if (unresolved.size) {
+    Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
+      if (names.some((n) => n)) refresh()
+    })
+  }
 }
 
 async function drawHex() {

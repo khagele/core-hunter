@@ -1,5 +1,38 @@
 import { describe, it, expect } from 'vitest'
-import { orderResolvers } from '../names.js'
+import { orderResolvers, resolvableKey, isFullPubkey, cachedName } from '../names.js'
+
+const PUBKEY = 'ab'.repeat(32) // 64 hex chars
+
+describe('resolvableKey — which senders to look up', () => {
+  it('returns the lowercased pubkey for a full-id sender with no label', () => {
+    expect(resolvableKey({ sender_id: PUBKEY.toUpperCase(), sender_label: '' })).toBe(PUBKEY)
+  })
+  it('returns null when a name is already present (fill-only)', () => {
+    expect(resolvableKey({ sender_id: PUBKEY, sender_label: 'Repeater-1' })).toBeNull()
+  })
+  it('returns null for a 1-byte source hash (full id not known)', () => {
+    expect(resolvableKey({ sender_id: '4a', sender_label: '' })).toBeNull()
+  })
+  it('returns null when there is no sender_id', () => {
+    expect(resolvableKey({ sender_id: '', sender_label: '' })).toBeNull()
+    expect(resolvableKey(null)).toBeNull()
+  })
+})
+
+describe('isFullPubkey', () => {
+  it('accepts 64 hex chars, rejects short/garbage', () => {
+    expect(isFullPubkey(PUBKEY)).toBe(true)
+    expect(isFullPubkey('4a')).toBe(false)
+    expect(isFullPubkey('xyz')).toBe(false)
+    expect(isFullPubkey(undefined)).toBe(false)
+  })
+})
+
+describe('cachedName', () => {
+  it('returns undefined for a key never resolved', () => {
+    expect(cachedName('deadbeef')).toBeUndefined()
+  })
+})
 
 const R_SF8 = { label: 'BE', sf: 8, url: 'https://be.example.com/resolve' }
 const R_SF7 = { label: 'NL', sf: 7, url: 'https://nl.example.com/resolve' }
