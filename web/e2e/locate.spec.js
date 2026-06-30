@@ -32,6 +32,34 @@ test('__locateRender draws centroid, strongest marker, heatmap and info card', a
   await expect(info).toContainText('1-byte ID') // senderId '4a' (< 64 chars) -> hash note
 })
 
+test('heatmap has no opaque rectangle floor (off-diagonal corner transparent)', async ({ page }) => {
+  // A NE–SW diagonal line of points: the off-diagonal (NW/SE) corners of the
+  // bounding box are far from every point, so their density is ~0 and must be
+  // gated to fully transparent — the regression guard for the rectangle artifact.
+  const DIAG = [
+    { lat: 51.000, lon: 4.000, rssi: -52 },
+    { lat: 51.010, lon: 4.014, rssi: -80 },
+    { lat: 50.990, lon: 3.986, rssi: -82 },
+  ]
+  await page.goto('/')
+  await page.waitForFunction(() => typeof window.__locateRender === 'function')
+  await page.evaluate((pts) => window.__locateRender(pts, '4a'), DIAG)
+  await expect(page.locator('img.leaflet-image-layer')).toHaveCount(1)
+
+  const alpha = await page.evaluate(async () => {
+    const img = document.querySelector('img.leaflet-image-layer')
+    const im = new Image()
+    await new Promise((res) => { im.onload = res; im.src = img.src })
+    const cv = document.createElement('canvas')
+    cv.width = im.naturalWidth; cv.height = im.naturalHeight
+    const ctx = cv.getContext('2d'); ctx.drawImage(im, 0, 0)
+    const at = (x, y) => ctx.getImageData(x, y, 1, 1).data[3]
+    return { corner: at(0, 0), center: at(cv.width >> 1, cv.height >> 1) }
+  })
+  expect(alpha.corner).toBe(0) // gated floor → no rectangle
+  expect(alpha.center).toBeGreaterThan(0) // hotspot still drawn
+})
+
 test('Locate button fetches /api/points and renders the overlay', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
