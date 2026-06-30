@@ -41,6 +41,28 @@ test('hunter dropdown is populated from /api/hunters', async ({ page }) => {
   await expect(page.locator('#f-hunter')).toContainText('ON8AR (42)')
 })
 
+test('discover sender: prefix ID is resolved to a name via the API, popup shows name · role', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({
+    json: { points: [{
+      lat: 51, lon: 4, rssi: -90, snr: -8,
+      sender_id: '7b0e24700e0c0d3e', sender_label: '', sender_role: 'Repeater',
+      hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
+    }] },
+  }))
+  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
+
+  // the website must look up the 8-byte discover prefix (not just full pubkeys)
+  const resolveReq = page.waitForRequest((r) => r.url().includes('/nodes/resolve') && r.url().includes('7b0e24700e0c0d3e'))
+  await page.goto('/')
+  await resolveReq
+
+  // after resolution + redraw, the marker popup shows the resolved name and role
+  await expect(async () => {
+    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    await expect(page.locator('.leaflet-popup-content')).toContainText('NEO7HI · Repeater', { timeout: 1000 })
+  }).toPass()
+})
+
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/')
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))

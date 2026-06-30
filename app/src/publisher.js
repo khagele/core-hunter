@@ -43,6 +43,7 @@ export class Publisher {
       sender_kind: rec.sender_kind,
       sender_id: rec.sender_id,
       sender_label: rec.sender_label,
+      sender_role: rec.sender_role,
       channel_name: rec.channel_name,
       packet_type: rec.packet_type,
       gps: { lat: rec.lat, lon: rec.lon, acc_m: rec.acc_m },

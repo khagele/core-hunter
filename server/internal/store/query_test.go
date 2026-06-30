@@ -28,6 +28,22 @@ func TestQueryPointsZeroHopAndFilters(t *testing.T) {
 	for _, p := range all { if p.SenderID == "cc" { t.Fatal("relayed row leaked") } }
 }
 
+func TestQueryPointsReturnsSenderRole(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil { t.Fatalf("open: %v", err) }
+	defer st.Close()
+	if err := st.Insert(Reception{
+		HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T12:00:00Z", RSSI: -90, Raw: "00",
+		IsDirect: true, Lat: 51.0, Lon: 4.0, SenderID: "7b0e24700e0c0d3e",
+		SenderKind: "discover_pubkey", SenderRole: "Repeater", PacketType: "Control",
+	}); err != nil { t.Fatalf("insert: %v", err) }
+	got, _, err := st.QueryPoints(Filter{Limit: 10})
+	if err != nil { t.Fatalf("query: %v", err) }
+	if len(got) != 1 || got[0].SenderRole != "Repeater" || got[0].SenderID != "7b0e24700e0c0d3e" {
+		t.Fatalf("sender_role not returned: %+v", got)
+	}
+}
+
 func TestQueryPointsTimeAndIgnore(t *testing.T) {
 	st := seed(t); defer st.Close()
 	got, _, _ := st.QueryPoints(Filter{From: "2026-06-30T10:15:00Z", To: "2026-06-30T11:30:00Z", Ignore: []string{"aa"}, Limit: 100})

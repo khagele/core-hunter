@@ -21,6 +21,7 @@ type Point struct {
 	SenderID     string   `json:"sender_id"`
 	SenderLabel  string   `json:"sender_label"`
 	SenderKind   string   `json:"sender_kind"`
+	SenderRole   string   `json:"sender_role"`
 	HunterPubkey string   `json:"hunter_pubkey"`
 	HunterName   string   `json:"hunter_name"`
 	ChannelName  string   `json:"channel_name"`
@@ -72,7 +73,7 @@ func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 	if f.Limit <= 0 { f.Limit = 5000 }
 	w, args := f.where()
 	args = append(args, f.Limit+1) // fetch one extra to detect truncation precisely
-	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
+	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,sender_role,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
 		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ?`, args...)
 	if err != nil { return nil, false, err }
 	defer rows.Close()
@@ -80,13 +81,13 @@ func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 		var p Point
 		var rssi sql.NullInt64
 		var snr sql.NullFloat64
-		var sid, slabel, skind, cn sql.NullString
-		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.RxAt); err != nil {
+		var sid, slabel, skind, srole, cn sql.NullString
+		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &srole, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.RxAt); err != nil {
 			return nil, false, err
 		}
 		if rssi.Valid { v := int(rssi.Int64); p.RSSI = &v }
 		if snr.Valid { p.SNR = &snr.Float64 }
-		p.SenderID, p.SenderLabel, p.SenderKind, p.ChannelName = sid.String, slabel.String, skind.String, cn.String
+		p.SenderID, p.SenderLabel, p.SenderKind, p.SenderRole, p.ChannelName = sid.String, slabel.String, skind.String, srole.String, cn.String
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil { return nil, false, err }
