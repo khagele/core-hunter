@@ -13,6 +13,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # release-please publishes each release with only that version's section.
+      # Replace the body with the full component CHANGELOG so the latest tag shows
+      # the cumulative history (newest first) — same as coredrive-rx.
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+
+      - name: Cumulative release notes
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_RELEASED: ${{ steps.release.outputs['app--release_created'] }}
+          APP_TAG: ${{ steps.release.outputs['app--tag_name'] }}
+          SERVER_RELEASED: ${{ steps.release.outputs['server--release_created'] }}
+          SERVER_TAG: ${{ steps.release.outputs['server--tag_name'] }}
+        run: |
+          set -euo pipefail
+          if [ "${APP_RELEASED:-}" = "true" ]; then
+            gh release edit "$APP_TAG" --notes-file app/CHANGELOG.md
+          fi
+          if [ "${SERVER_RELEASED:-}" = "true" ]; then
+            gh release edit "$SERVER_TAG" --notes-file server/CHANGELOG.md
+          fi
