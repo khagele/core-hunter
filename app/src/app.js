@@ -22,6 +22,7 @@ import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
+import { sinceLabel } from './elapsed.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
@@ -82,6 +83,9 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   manualFix: loadManualFix(),
+  // Epoch ms of the most recent captured reception, for the "since last packet"
+  // HUD timer. null until the first packet is heard this session.
+  lastPacketAt: null,
   filter: { ...DEFAULT_FILTER },
 }
 
@@ -155,6 +159,7 @@ async function processFrame(dv) {
   const rec = buildRecord(frame, cls, fix, new Date().toISOString())
   rec._text = cls.text // local-only, for the popup; stripped before publish
   await state.queue.add(rec)
+  state.lastPacketAt = Date.now()
   updateHud(rec)
 }
 
@@ -183,6 +188,7 @@ async function renderTick() {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
     const rows = await state.queue.takeAll()
     const now = Date.now()
+    el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
     enrichNames(rows)
     if (state.map) {
       const fn = makeFilter({ ...state.filter, ignore: state.ignore })
