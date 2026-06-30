@@ -85,6 +85,27 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   await expect(page.locator('#locate-info')).toBeVisible()
 })
 
+test('CoreScope relays checkbox (off by default) draws observer points with resolved name', async ({ page }) => {
+  await page.route('**/api/observer-points*', (route) => {
+    const src = new URL(route.request().url()).searchParams.get('src')
+    const pts = src === 'rxlog'
+      ? [{ lat: 51, lon: 4, rssi: -100, snr: -5, heard_key: '1d6f', src: 'rxlog', observer: 'Erwin Mobile', rx_at: '2026-06-30T15:00:00Z' }]
+      : []
+    route.fulfill({ json: { points: pts } })
+  })
+  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
+  await page.goto('/')
+
+  await expect(page.locator('#cs-relays')).not.toBeChecked() // off by default
+  await page.check('#cs-relays')
+
+  await expect(async () => {
+    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    await expect(page.locator('.leaflet-popup-content')).toContainText('relay BE-HSS-DinX', { timeout: 1000 })
+  }).toPass()
+  await expect(page.locator('.leaflet-popup-content')).toContainText('Erwin Mobile')
+})
+
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/')
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))

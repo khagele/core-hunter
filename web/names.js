@@ -7,7 +7,10 @@ import { RESOLVE_URL } from './config.js'
 
 const cache = new Map() // key (lowercase hex) -> name | ''
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i
-const RESOLVABLE = /^[0-9a-f]{8,64}$/i // 4..32 bytes; excludes 1-byte hashes
+// 2..32 bytes: discover 8-byte prefixes, advert pubkeys, AND CoreScope 2-byte
+// relay path-prefixes (all resolve uniquely via CoreScope). 1-byte hashes (2 hex)
+// stay excluded. Ambiguous results are handled by resolveName (cached as '').
+const RESOLVABLE = /^[0-9a-f]{4,64}$/i
 
 export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.test(id) }
 export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE.test(id) }

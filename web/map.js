@@ -16,6 +16,8 @@ const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
 const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
+const csAdvertLayer = L.layerGroup().addTo(map)
+const csRelayLayer = L.layerGroup().addTo(map)
 let locateActive = false
 let locateTimer = null
 
@@ -261,3 +263,54 @@ document.addEventListener('click', (e) => {
   map.closePopup()
   activateLocate()
 })
+
+// --- CoreScope mobile-observer layers (two optional toggles, default off) ---
+// Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
+// repeater name. Relays (last-hop repeaters) drawn as a ring to distinguish them
+// from the solid advert (zero-hop node) dots.
+async function drawObserverPoints(src, layer, ring) {
+  layer.clearLayers()
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const p = new URLSearchParams({ src })
+  if (f.from) p.set('from', f.from)
+  if (f.to) p.set('to', f.to)
+  let d
+  try {
+    const r = await fetch(`${API_BASE}/api/observer-points?${p}`)
+    if (!r.ok) return
+    d = await r.json()
+  } catch { return }
+  const unresolved = new Set()
+  for (const pt of d.points || []) {
+    const id = (pt.heard_key || '').toLowerCase()
+    if (isResolvableId(id) && cachedName(id) === undefined) unresolved.add(id)
+    const tier = rssiTier(pt.rssi)
+    const col = cssVar(tierColorVar(tier))
+    const name = (isResolvableId(id) && cachedName(id)) || id || '—'
+    const opts = ring
+      ? { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.12 }
+      : { radius: 4, color: col, weight: 1, fillColor: col, fillOpacity: fillOpacity(tier) }
+    L.circleMarker([pt.lat, pt.lon], opts)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}<br>observer ${esc(pt.observer)}<br>${esc(pt.rx_at)}`)
+      .addTo(layer)
+  }
+  if (unresolved.size) {
+    Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
+      if (names.some((n) => n)) drawObserverPoints(src, layer, ring)
+    })
+  }
+}
+
+const csAdvertCb = document.getElementById('cs-adverts')
+const csRelayCb = document.getElementById('cs-relays')
+csAdvertCb.addEventListener('change', () => (csAdvertCb.checked ? drawObserverPoints('advert', csAdvertLayer, false) : csAdvertLayer.clearLayers()))
+csRelayCb.addEventListener('change', () => (csRelayCb.checked ? drawObserverPoints('rxlog', csRelayLayer, true) : csRelayLayer.clearLayers()))
+// Redraw active observer layers when the timeframe changes (they are timeframe-
+// scoped, not bbox-scoped — so no redraw on pan/zoom).
+for (const id of ['f-from', 'f-to']) {
+  const el = document.getElementById(id)
+  if (el) el.addEventListener('change', () => {
+    if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+    if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+  })
+}

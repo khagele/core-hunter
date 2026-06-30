@@ -33,6 +33,17 @@ func main() {
 		log.Fatalf("store: %v", err)
 	}
 
+	// Optional read-only CoreScope DB for the observer-points layers. Non-fatal:
+	// if it can't be opened, the endpoint just returns empty.
+	cs, err := store.OpenCS(cfg.CSDBPath)
+	if err != nil {
+		log.Printf("corescope db (%s) unavailable, observer layers disabled: %v", cfg.CSDBPath, err)
+		cs = nil
+	} else if cs != nil {
+		log.Printf("corescope db opened read-only: %s", cfg.CSDBPath)
+		defer cs.Close()
+	}
+
 	opts := mqtt.NewClientOptions().
 		AddBroker(cfg.MQTTURL).
 		SetUsername(cfg.MQTTUsername).
@@ -70,7 +81,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version.Version + `"}`))
 	})
-	httpapi.RegisterRoutes(mux, st, cfg.Ignore)
+	httpapi.RegisterRoutes(mux, st, cfg.Ignore, cs)
 
 	go func() {
 		if err := http.ListenAndServe(cfg.HTTPAddr, mux); err != nil {
