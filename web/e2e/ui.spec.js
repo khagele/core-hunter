@@ -63,6 +63,28 @@ test('discover sender: prefix ID is resolved to a name via the API, popup shows 
   }).toPass()
 })
 
+test('point popup "Locate this sender" fills the filter and starts a locate', async ({ page }) => {
+  const SID = 'db11db11f7808b97'
+  await page.route('**/api/points*', (r) => r.fulfill({
+    json: { points: [{
+      lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: SID, sender_label: '',
+      sender_role: 'Repeater', hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
+    }] },
+  }))
+  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
+  await page.goto('/')
+
+  await expect(async () => {
+    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await page.locator('.lc-locate').click()
+
+  await expect(page.locator('#f-sender')).toHaveValue(SID)
+  await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
+  await expect(page.locator('#locate-info')).toBeVisible()
+})
+
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/')
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))

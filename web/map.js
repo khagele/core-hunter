@@ -60,9 +60,12 @@ async function drawPoints() {
       unresolved.add(pt.sender_id.toLowerCase())
     }
     const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
+    const sid = pt.sender_id || ''
+    const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
+    const locBtn = sid ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
     L.circleMarker([pt.lat, pt.lon], { radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}`)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${(d.points||[]).length} points${d.truncated ? ' (capped)' : ''}`
@@ -233,15 +236,28 @@ async function drawLocate() {
 }
 
 const locateBtn = document.getElementById('locate-toggle')
-locateBtn.addEventListener('click', () => {
-  locateActive = !locateActive
-  locateBtn.classList.toggle('on', locateActive)
-  if (locateActive) {
-    drawLocate()
-    locateTimer = setInterval(drawLocate, 5000)
-  } else {
-    clearInterval(locateTimer); locateTimer = null
-    locateLayer.clearLayers()
-    document.getElementById('locate-info').hidden = true
-  }
+function activateLocate() {
+  if (locateActive) { drawLocate(); return }
+  locateActive = true
+  locateBtn.classList.add('on')
+  drawLocate()
+  locateTimer = setInterval(drawLocate, 5000)
+}
+function deactivateLocate() {
+  locateActive = false
+  locateBtn.classList.remove('on')
+  clearInterval(locateTimer); locateTimer = null
+  locateLayer.clearLayers()
+  document.getElementById('locate-info').hidden = true
+}
+locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
+
+// "Locate this sender" button inside a point popup: set the sender filter to the
+// clicked node's ID and start (or refresh) a Locate for it.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.lc-locate')
+  if (!btn) return
+  document.getElementById('f-sender').value = btn.dataset.sender
+  map.closePopup()
+  activateLocate()
 })

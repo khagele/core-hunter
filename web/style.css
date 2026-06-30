@@ -30,3 +30,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   background: var(--ch-sig-hot); box-shadow: 0 0 0 2px var(--ch-sig-hot); }
 .lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+.pp-id { color: var(--ch-muted); font-size: 11px; word-break: break-all; }
+.lc-locate { margin-top: 6px; padding: 3px 9px; border: none; border-radius: 6px; cursor: pointer;
+  background: var(--ch-sig-warm); color: var(--ch-bg); font: inherit; font-size: 12px; }
