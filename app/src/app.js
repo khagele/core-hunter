@@ -134,10 +134,12 @@ function setDot(id, on) {
   else d.classList.remove('on')
 }
 
-// Light the filter button's badge when the current filter differs from the
-// default (closed-sheet signal). Called wherever state.filter changes.
+// Light the filter button's badge when the view is narrowed — either the filter
+// differs from the default or the ignore-list (also a display filter) is
+// non-empty. Closed-sheet signal; called wherever state.filter or state.ignore
+// changes.
 function refreshFilterIndicator() {
-  el('filter-btn').classList.toggle('active', isFilterActive(state.filter))
+  el('filter-btn').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +404,11 @@ function buildFilterSheet() {
           ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
         </div>
       </div>
+      <div class="ss-ignore-section">
+        <h3>Ignored stations</h3>
+        <div id="ss-ignore-list"></div>
+        <button id="ss-ignore-clear">Clear ignore-list</button>
+      </div>
     </div>`
 
   const chk = el('fs-direct-only')
@@ -442,6 +449,14 @@ function buildFilterSheet() {
     refreshFilterIndicator()
   })
 
+  renderIgnoreList(el('ss-ignore-list'))
+  el('ss-ignore-clear').addEventListener('click', () => {
+    state.ignore.clear()
+    saveIgnore(state.ignore)
+    renderIgnoreList(el('ss-ignore-list'))
+    refreshFilterIndicator()
+  })
+
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
 }
 
@@ -468,6 +483,7 @@ function renderIgnoreList(listEl) {
       state.ignore.delete(key)
       saveIgnore(state.ignore)
       renderIgnoreList(listEl)
+      refreshFilterIndicator()
     })
     row.appendChild(label)
     row.appendChild(rm)
@@ -509,11 +525,6 @@ function buildSettingsSheet() {
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
-      <div class="ss-ignore-section">
-        <h3>Ignored stations</h3>
-        <div id="ss-ignore-list"></div>
-        <button id="ss-ignore-clear">Clear ignore-list</button>
-      </div>
       <div class="ss-manfix-section">
         <h3>Manual position (dev)</h3>
         <div class="ss-manfix-inputs">
@@ -550,13 +561,6 @@ function buildSettingsSheet() {
     if (state.map) state.map.applyBasemap()
   })
 
-  renderIgnoreList(el('ss-ignore-list'))
-
-  el('ss-ignore-clear').addEventListener('click', () => {
-    state.ignore.clear()
-    saveIgnore(state.ignore)
-    renderIgnoreList(el('ss-ignore-list'))
-  })
 
   // Manual position — prefill inputs from persisted state
   const latInput = el('ss-manfix-lat')
@@ -635,6 +639,7 @@ document.addEventListener('hunt:ignore-sender', (e) => {
   if (!e.detail || !e.detail.id) return
   state.ignore.add(String(e.detail.id).toLowerCase())
   saveIgnore(state.ignore)
+  refreshFilterIndicator()
   // next renderTick picks up the updated set automatically
 })
 
@@ -692,7 +697,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('filter-btn').addEventListener('click', () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden
-    if (!sheet.hidden) el('settings-sheet').hidden = true
+    if (!sheet.hidden) {
+      el('settings-sheet').hidden = true
+      renderIgnoreList(el('ss-ignore-list'))
+    }
   })
 
   el('settings-btn').addEventListener('click', () => {
@@ -700,7 +708,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
-      renderIgnoreList(el('ss-ignore-list'))
       updateManualFixStatus(el('ss-manfix-status'))
       refreshConnState()
     }
