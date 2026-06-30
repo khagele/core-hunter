@@ -99,6 +99,28 @@ export function densityGrid(points, opts = {}) {
   return { grid, rows, cols, bounds }
 }
 
+// Convergence + geometry feedback. searchRadiusM = RSSI-weighted RMS distance to
+// the centroid (shrinks as good data accumulates). encirclement = fraction of 8
+// azimuth sectors around the centroid that contain a point (low = one-sided).
+export function geometryStats(points, centroid) {
+  if (!centroid || !points.length) {
+    return { n: points.length, searchRadiusM: null, encirclement: 0 }
+  }
+  let sw = 0, swd2 = 0
+  const sectors = new Array(8).fill(false)
+  for (const p of points) {
+    const w = rssiWeight(p.rssi)
+    const d = haversineM(p, centroid)
+    sw += w; swd2 += w * d * d
+    const ang = Math.atan2(p.lon - centroid.lon, p.lat - centroid.lat) // [-pi, pi]
+    const sector = (Math.floor((ang + Math.PI) / (Math.PI / 4)) % 8 + 8) % 8
+    sectors[sector] = true
+  }
+  const searchRadiusM = sw > 0 ? Math.sqrt(swd2 / sw) : null
+  const encirclement = sectors.filter(Boolean).length / 8
+  return { n: points.length, searchRadiusM, encirclement }
+}
+
 // Split points into inliers/outliers. Robust center = coordinate-wise median;
 // outlier if distance > max(factor * medianDistance, floorM). This catches a
 // lone far stray (a colliding 1-byte node) without flagging GPS jitter in a

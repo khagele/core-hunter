@@ -79,6 +79,42 @@ describe('rejectOutliers', () => {
 })
 
 import { densityGrid } from './locate.js'
+import { geometryStats } from './locate.js'
+
+describe('geometryStats', () => {
+  const centroid = { lat: 51, lon: 4 }
+
+  it('encirclement is low for one-sided sampling, high when surrounded', () => {
+    const oneSide = [
+      { lat: 51.01, lon: 4.00, rssi: -70 },
+      { lat: 51.02, lon: 4.00, rssi: -70 },
+      { lat: 51.03, lon: 4.00, rssi: -70 },
+    ]
+    const around = [
+      { lat: 51.01, lon: 4.00, rssi: -70 },
+      { lat: 50.99, lon: 4.00, rssi: -70 },
+      { lat: 51.00, lon: 4.01, rssi: -70 },
+      { lat: 51.00, lon: 3.99, rssi: -70 },
+    ]
+    expect(geometryStats(oneSide, centroid).encirclement).toBeLessThan(0.3)
+    expect(geometryStats(around, centroid).encirclement).toBeGreaterThan(0.4)
+  })
+
+  it('search radius shrinks when points are closer to the centroid', () => {
+    const far = [
+      { lat: 51.05, lon: 4, rssi: -70 }, { lat: 50.95, lon: 4, rssi: -70 },
+    ]
+    const near = [
+      { lat: 51.005, lon: 4, rssi: -70 }, { lat: 50.995, lon: 4, rssi: -70 },
+    ]
+    expect(geometryStats(near, centroid).searchRadiusM)
+      .toBeLessThan(geometryStats(far, centroid).searchRadiusM)
+  })
+
+  it('returns null radius for no centroid', () => {
+    expect(geometryStats([{ lat: 51, lon: 4, rssi: -70 }], null).searchRadiusM).toBeNull()
+  })
+})
 
 describe('densityGrid', () => {
   const pts = [
