@@ -80,13 +80,14 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		}
 		q := r.URL.Query()
 		src := q.Get("src")
-		if src != "advert" && src != "rxlog" {
-			http.Error(w, "src must be advert or rxlog", 400)
+		hk := q.Get("heard_key")
+		if hk == "" && src != "advert" && src != "rxlog" {
+			http.Error(w, "src must be advert or rxlog (or provide heard_key)", 400)
 			return
 		}
 		limit := 0
 		if n, err := strconv.Atoi(q.Get("limit")); err == nil { limit = n }
-		pts, err := cs.ObserverPoints(src, q.Get("from"), q.Get("to"), limit)
+		pts, err := cs.ObserverPoints(src, hk, q.Get("from"), q.Get("to"), limit)
 		if err != nil { http.Error(w, err.Error(), 500); return }
 		writeJSON(w, map[string]any{"points": pts})
 	})

@@ -96,6 +96,7 @@ let t = null
 export function refresh() {
   clearTimeout(t)
   t = setTimeout(() => {
+    if (locateActive) return // focus mode: keep the non-relevant layers hidden
     if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
   }, 250)
@@ -234,6 +235,17 @@ async function drawLocate() {
     return
   }
   const points = (d.points || []).map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
+  // When a CoreScope layer is shown, count that node's CoreScope sightings too —
+  // resilient (a failed source just contributes nothing).
+  const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
+  const hk = encodeURIComponent(f.sender)
+  const extra = []
+  if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
+  if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+  if (extra.length) {
+    const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
+    for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
+  }
   renderLocate(points, f.sender)
 }
 
@@ -242,6 +254,8 @@ function activateLocate() {
   if (locateActive) { drawLocate(); return }
   locateActive = true
   locateBtn.classList.add('on')
+  // focus mode: hide every non-relevant layer so only the located node shows
+  pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
   drawLocate()
   locateTimer = setInterval(drawLocate, 5000)
 }
@@ -251,6 +265,9 @@ function deactivateLocate() {
   clearInterval(locateTimer); locateTimer = null
   locateLayer.clearLayers()
   document.getElementById('locate-info').hidden = true
+  refresh() // restore points/hex per mode
+  if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+  if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
 }
 locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
 
@@ -287,11 +304,14 @@ async function drawObserverPoints(src, layer, ring) {
     const tier = rssiTier(pt.rssi)
     const col = cssVar(tierColorVar(tier))
     const name = (isResolvableId(id) && cachedName(id)) || id || '—'
+    const hk = pt.heard_key || ''
+    const idLine = hk ? `<br><span class="pp-id">${esc(hk)}</span>` : ''
+    const locBtn = hk ? `<br><button class="lc-locate" data-sender="${esc(hk)}">Locate this sender</button>` : ''
     const opts = ring
       ? { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.12 }
       : { radius: 4, color: col, weight: 1, fillColor: col, fillOpacity: fillOpacity(tier) }
     L.circleMarker([pt.lat, pt.lon], opts)
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}<br>observer ${esc(pt.observer)}<br>${esc(pt.rx_at)}`)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>observer ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(layer)
   }
   if (unresolved.size) {
@@ -303,13 +323,18 @@ async function drawObserverPoints(src, layer, ring) {
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
-csAdvertCb.addEventListener('change', () => (csAdvertCb.checked ? drawObserverPoints('advert', csAdvertLayer, false) : csAdvertLayer.clearLayers()))
-csRelayCb.addEventListener('change', () => (csRelayCb.checked ? drawObserverPoints('rxlog', csRelayLayer, true) : csRelayLayer.clearLayers()))
-// Redraw active observer layers when the timeframe changes (they are timeframe-
-// scoped, not bbox-scoped — so no redraw on pan/zoom).
+function toggleCsLayer(cb, src, layer, ring) {
+  if (locateActive) { drawLocate(); return } // focus mode: feed Locate, not the all-nodes layer
+  cb.checked ? drawObserverPoints(src, layer, ring) : layer.clearLayers()
+}
+csAdvertCb.addEventListener('change', () => toggleCsLayer(csAdvertCb, 'advert', csAdvertLayer, false))
+csRelayCb.addEventListener('change', () => toggleCsLayer(csRelayCb, 'rxlog', csRelayLayer, true))
+// On timeframe change: feed Locate if active, else redraw the all-nodes CS layers
+// (they are timeframe-scoped, not bbox-scoped — so no redraw on pan/zoom).
 for (const id of ['f-from', 'f-to']) {
   const el = document.getElementById(id)
   if (el) el.addEventListener('change', () => {
+    if (locateActive) { drawLocate(); return }
     if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
     if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
   })
