@@ -1,6 +1,7 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, senderName } from './names.js'
+import { locate } from './locate.js'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -14,6 +15,24 @@ const tileUrl = (t) => `https://{s}.basemaps.cartocdn.com/${BASEMAP[t]}/{z}/{x}/
 const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
 const hexLayer = L.layerGroup().addTo(map)
+const locateLayer = L.layerGroup().addTo(map)
+let locateActive = false
+let locateTimer = null
+
+// Heat ramp built from the existing --ch-sig-* tokens (cold -> hot), so the
+// canvas honours the CSS-variable colour rule. Returns [r,g,b].
+function heatStops() {
+  const hex = (h) => { const s = h.replace('#', '').trim(); const n = s.length === 3 ? s.split('').map((x) => x + x).join('') : s; return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)] }
+  return ['--ch-sig-cold', '--ch-sig-cool', '--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
+}
+function heatColor(v, stops) {
+  const t = Math.max(0, Math.min(1, v)) * (stops.length - 1)
+  const i = Math.min(stops.length - 2, Math.floor(t))
+  const f = t - i
+  const a = stops[i], b = stops[i + 1]
+  return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f))
+}
+
 let mode = 'points'
 const bar = document.getElementById('bar')
 const setMapTop = () => { document.getElementById('map').style.top = bar.offsetHeight + 'px'; map.invalidateSize() }
@@ -94,3 +113,122 @@ themeBtn.addEventListener('click', () => {
 map.on('moveend zoomend', refresh)
 window.__refresh = refresh
 refresh()
+
+// Paint a normalized density grid to a canvas and return a Leaflet image overlay.
+function heatmapOverlay(hm) {
+  const { grid, rows, cols, bounds } = hm
+  const canvas = document.createElement('canvas')
+  canvas.width = cols; canvas.height = rows
+  const ctx = canvas.getContext('2d')
+  const img = ctx.createImageData(cols, rows)
+  const stops = heatStops()
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = grid[r * cols + c]
+      const y = rows - 1 - r // grid row 0 = south; canvas y=0 = top
+      const idx = (y * cols + c) * 4
+      const [cr, cg, cb] = heatColor(v, stops)
+      img.data[idx] = cr; img.data[idx + 1] = cg; img.data[idx + 2] = cb
+      img.data[idx + 3] = Math.round(190 * v) // alpha by intensity
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return L.imageOverlay(canvas.toDataURL(), [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]],
+    { opacity: 0.7, interactive: false })
+}
+
+// Render a full locate result onto locateLayer + the info card.
+function renderLocate(points, senderId) {
+  if (!locateActive) return
+  locateLayer.clearLayers()
+  const res = locate(points)
+  if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
+  // observation points: inliers coloured by RSSI, outliers greyed/dashed
+  for (const p of res.inliers) {
+    const tier = rssiTier(p.rssi)
+    L.circleMarker([p.lat, p.lon], { radius: 4, color: cssVar(tierColorVar(tier)), weight: 1,
+      fillColor: cssVar(tierColorVar(tier)), fillOpacity: 0.7 }).addTo(locateLayer)
+  }
+  for (const p of res.outliers) {
+    L.circleMarker([p.lat, p.lon], { radius: 4, color: cssVar('--ch-sig-none'), weight: 1,
+      dashArray: '2,2', fillColor: cssVar('--ch-sig-none'), fillOpacity: 0.2 }).addTo(locateLayer)
+  }
+  if (res.centroid) {
+    L.marker([res.centroid.lat, res.centroid.lon], {
+      icon: L.divIcon({ className: '', html: '<div class="lc-centroid"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+    }).addTo(locateLayer)
+  }
+  updateLocateInfo(res, senderId)
+}
+
+function updateLocateInfo(res, senderId) {
+  const box = document.getElementById('locate-info')
+  box.hidden = false
+  const s = res.stats
+  if (!res.centroid) {
+    box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+).</div>`
+    return
+  }
+  const isHash = !!senderId && !isFullPubkey(senderId)
+  const radius = s.searchRadiusM != null ? Math.round(s.searchRadiusM) + ' m' : '—'
+  const enc = Math.round(s.encirclement * 100)
+  const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — drive around the estimate to tighten.</div>' : ''
+  const hashNote = isHash ? `<div class="lc-warn">1-byte ID — assumed one node; ${res.outliers.length} outlier(s) excluded.</div>` : ''
+  box.innerHTML = `<h4>Locate</h4>`
+    + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%</div>`
+    + encHint + hashNote
+    + `<div class="lc-muted">Estimate sits within the driven area · ~hundreds of m · no TX calibration.</div>`
+}
+
+// Test hook: render a supplied point array (no API needed).
+window.__locateRender = (points, senderId = 'efef79') => { locateActive = true; renderLocate(points, senderId) }
+
+// Build a sender-scoped, bbox-less query for /api/points (all of this node's
+// receptions across all hunters, full timeframe — not viewport-limited).
+function locateQs(f) {
+  const p = new URLSearchParams({ sender: f.sender })
+  if (f.from) p.set('from', f.from)
+  if (f.to) p.set('to', f.to)
+  return p.toString()
+}
+
+async function drawLocate() {
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const box = document.getElementById('locate-info')
+  if (!f.sender) {
+    locateLayer.clearLayers()
+    if (locateActive) {
+      box.hidden = false
+      box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Enter a sender ID to locate.</div>'
+    }
+    return
+  }
+  let d
+  try {
+    const r = await fetch(`${API_BASE}/api/points?${locateQs(f)}`)
+    if (!r.ok) throw new Error(`points ${r.status}`)
+    d = await r.json()
+  } catch (e) {
+    if (locateActive) {
+      box.hidden = false
+      box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Could not load points — retrying…</div>'
+    }
+    return
+  }
+  const points = (d.points || []).map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
+  renderLocate(points, f.sender)
+}
+
+const locateBtn = document.getElementById('locate-toggle')
+locateBtn.addEventListener('click', () => {
+  locateActive = !locateActive
+  locateBtn.classList.toggle('on', locateActive)
+  if (locateActive) {
+    drawLocate()
+    locateTimer = setInterval(drawLocate, 5000)
+  } else {
+    clearInterval(locateTimer); locateTimer = null
+    locateLayer.clearLayers()
+    document.getElementById('locate-info').hidden = true
+  }
+})
