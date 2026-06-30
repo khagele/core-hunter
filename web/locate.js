@@ -140,3 +140,20 @@ export function rejectOutliers(points, opts = {}) {
   points.forEach((p, i) => (dists[i] > threshold ? outliers : inliers).push(p))
   return { inliers, outliers }
 }
+
+// Full estimate from raw receive points [{lat,lon,rssi,acc_m}]. Rejects outliers,
+// then computes the weighted centroid, density heatmap and geometry stats over the
+// inliers. centroid/heatmap are null when fewer than 3 inliers remain.
+export function locate(points, opts = {}) {
+  const { inliers, outliers } = rejectOutliers(points, opts)
+  if (inliers.length < 3) {
+    return {
+      centroid: null, heatmap: null, inliers, outliers,
+      stats: { n: inliers.length, searchRadiusM: null, encirclement: 0 },
+    }
+  }
+  const centroid = weightedCentroid(inliers)
+  const heatmap = densityGrid(inliers, opts)
+  const stats = geometryStats(inliers, centroid)
+  return { centroid, heatmap, inliers, outliers, stats }
+}
