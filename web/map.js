@@ -156,7 +156,13 @@ function renderLocate(points, senderId) {
   if (res.centroid) {
     L.marker([res.centroid.lat, res.centroid.lon], {
       icon: L.divIcon({ className: '', html: '<div class="lc-centroid"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
-    }).addTo(locateLayer)
+    }).bindTooltip('weighted estimate').addTo(locateLayer)
+  }
+  // strongest reception: where you heard it loudest (closest single sample)
+  if (res.strongest) {
+    L.marker([res.strongest.lat, res.strongest.lon], {
+      icon: L.divIcon({ className: '', html: '<div class="lc-strongest">★</div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+    }).bindTooltip(`strongest reception ${esc(res.strongest.rssi)} dBm`).addTo(locateLayer)
   }
   updateLocateInfo(res, senderId)
 }
@@ -174,10 +180,11 @@ function updateLocateInfo(res, senderId) {
   const enc = Math.round(s.encirclement * 100)
   const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — drive around the estimate to tighten.</div>' : ''
   const hashNote = isHash ? `<div class="lc-warn">1-byte ID — assumed one node; ${res.outliers.length} outlier(s) excluded.</div>` : ''
+  const strong = res.strongest ? ` · ★ strongest ${esc(res.strongest.rssi)} dBm` : ''
   box.innerHTML = `<h4>Locate</h4>`
-    + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%</div>`
+    + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
     + encHint + hashNote
-    + `<div class="lc-muted">Estimate sits within the driven area · ~hundreds of m · no TX calibration.</div>`
+    + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. Within driven area · ~hundreds of m · no TX calibration.</div>`
 }
 
 // Test hook: render a supplied point array (no API needed).

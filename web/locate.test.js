@@ -168,6 +168,12 @@ describe('locate', () => {
     expect(res.outliers).toHaveLength(0)
   })
 
+  it('exposes the strongest-RSSI inlier (heard-loudest sample)', () => {
+    const res = locate(pts)
+    expect(res.strongest.rssi).toBe(-60)
+    expect(res.strongest.lat).toBeCloseTo(51.0, 6)
+  })
+
   it('separates a far stray into outliers and excludes it from the centroid', () => {
     const stray = { lat: 52.0, lon: 5.0, rssi: -95 }
     const res = locate([...pts, stray])

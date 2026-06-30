@@ -172,14 +172,19 @@ export function dedupeSpatial(points, cellM = DEFAULT_CELL_M) {
 export function locate(points, opts = {}) {
   const deduped = dedupeSpatial(points, opts.cellM ?? DEFAULT_CELL_M)
   const { inliers, outliers } = rejectOutliers(deduped, opts)
+  // strongest = the inlier heard loudest; the closest single sample to the node,
+  // shown alongside the centroid (which the weak-signal crowd can pull off it).
+  const strongest = inliers.length
+    ? inliers.reduce((a, b) => ((b.rssi ?? -Infinity) > (a.rssi ?? -Infinity) ? b : a))
+    : null
   if (inliers.length < 3) {
     return {
-      centroid: null, heatmap: null, inliers, outliers,
+      centroid: null, heatmap: null, strongest, inliers, outliers,
       stats: { n: inliers.length, searchRadiusM: null, encirclement: 0 },
     }
   }
   const centroid = weightedCentroid(inliers)
   const heatmap = densityGrid(inliers, opts)
   const stats = geometryStats(inliers, centroid)
-  return { centroid, heatmap, inliers, outliers, stats }
+  return { centroid, heatmap, strongest, inliers, outliers, stats }
 }
