@@ -49,14 +49,24 @@ func (r *CSReader) Close() error {
 }
 
 // ObserverPoints returns geolocated receptions from MOBILE observers (lat/lon
-// spread > ~300 m) for the given src ("advert" or "rxlog"), within [from, to],
-// newest first, capped at limit. Joined with client_observers for the name.
-func (r *CSReader) ObserverPoints(src, from, to string, limit int) ([]ObserverPoint, error) {
+// spread > ~300 m), within [from, to], newest first, capped at limit, joined with
+// client_observers for the name. src ("advert"/"rxlog") filters the layer when
+// non-empty; heardKey filters to one node by pubkey/path prefix (case-insensitive)
+// when non-empty — used by Locate to gather a node's sightings across both DBs.
+func (r *CSReader) ObserverPoints(src, heardKey, from, to string, limit int) ([]ObserverPoint, error) {
 	if limit <= 0 {
 		limit = 5000
 	}
-	conds := []string{"cr.lat IS NOT NULL", "cr.src = ?"}
-	args := []any{src}
+	conds := []string{"cr.lat IS NOT NULL"}
+	var args []any
+	if src != "" {
+		conds = append(conds, "cr.src = ?")
+		args = append(args, src)
+	}
+	if heardKey != "" {
+		conds = append(conds, "lower(cr.heard_key) LIKE ?")
+		args = append(args, strings.ToLower(heardKey)+"%")
+	}
 	if from != "" {
 		conds = append(conds, "cr.rx_at >= ?")
 		args = append(args, from)

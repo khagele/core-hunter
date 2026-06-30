@@ -24,7 +24,7 @@ func TestObserverPointsMobileOnlyBySrcAndTimeframe(t *testing.T) {
 	  ('fix','f519',2,-80,-2.0, 52.000,5.000,'2026-06-30T10:07:00Z','rxlog')`)
 	cs := &CSReader{db: db}
 
-	rx, err := cs.ObserverPoints("rxlog", "2026-06-30T09:00:00Z", "2026-06-30T11:00:00Z", 100)
+	rx, err := cs.ObserverPoints("rxlog", "", "2026-06-30T09:00:00Z", "2026-06-30T11:00:00Z", 100)
 	if err != nil {
 		t.Fatalf("rxlog: %v", err)
 	}
@@ -37,12 +37,21 @@ func TestObserverPointsMobileOnlyBySrcAndTimeframe(t *testing.T) {
 		t.Fatalf("observer/src wrong: %+v", rx[0])
 	}
 
-	adv, err := cs.ObserverPoints("advert", "2026-06-30T09:00:00Z", "2026-06-30T11:00:00Z", 100)
+	adv, err := cs.ObserverPoints("advert", "", "2026-06-30T09:00:00Z", "2026-06-30T11:00:00Z", 100)
 	if err != nil {
 		t.Fatalf("advert: %v", err)
 	}
 	if len(adv) != 1 || adv[0].HeardKey != "abcd" {
 		t.Fatalf("advert mobile = %d, want 1 (abcd): %+v", len(adv), adv)
+	}
+
+	// heard_key filter (prefix), src empty → all sightings of that node (both src).
+	hk, err := cs.ObserverPoints("", "1d6f", "2026-06-30T09:00:00Z", "2026-06-30T11:00:00Z", 100)
+	if err != nil {
+		t.Fatalf("heard_key: %v", err)
+	}
+	if len(hk) != 2 {
+		t.Fatalf("heard_key=1d6f in window = %d, want 2: %+v", len(hk), hk)
 	}
 }
 

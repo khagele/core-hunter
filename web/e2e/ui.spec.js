@@ -106,6 +106,41 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
   await expect(page.locator('.leaflet-popup-content')).toContainText('Erwin Mobile')
 })
 
+test('Locate from a CoreScope relay popup uses observer-points (heard_key) for that node', async ({ page }) => {
+  const HK = '1d6f'
+  await page.route('**/api/observer-points*', (route) => {
+    const u = new URL(route.request().url())
+    const heardKey = u.searchParams.get('heard_key')
+    const src = u.searchParams.get('src')
+    let pts = []
+    if (!heardKey && src === 'rxlog') {
+      pts = [{ lat: 51, lon: 4, rssi: -100, snr: -5, heard_key: HK, src: 'rxlog', observer: 'Erwin Mobile', rx_at: '2026-06-30T15:00:00Z' }]
+    } else if (heardKey === HK) {
+      pts = [
+        { lat: 51.000, lon: 4.000, rssi: -60, snr: -3 },
+        { lat: 51.010, lon: 4.000, rssi: -90, snr: -8 },
+        { lat: 50.990, lon: 4.000, rssi: -88, snr: -7 },
+      ]
+    }
+    route.fulfill({ json: { points: pts } })
+  })
+  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
+  await page.goto('/')
+  await page.check('#cs-relays')
+
+  const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
+  await expect(async () => {
+    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await page.locator('.lc-locate').click()
+
+  await expect(page.locator('#f-sender')).toHaveValue(HK)
+  await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
+  await locateReq // Locate pulled this relay's CoreScope sightings by heard_key
+  await expect(page.locator('#locate-info')).toBeVisible()
+})
+
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/')
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
