@@ -46,6 +46,59 @@ function median(xs) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
+const DEFAULT_COLS = 64
+const DEFAULT_ROWS = 64
+
+// Bounding box of points, padded by marginFrac on each side.
+function boundsOf(points, marginFrac = 0.15) {
+  let minLat = Infinity, minLon = Infinity, maxLat = -Infinity, maxLon = -Infinity
+  for (const p of points) {
+    minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat)
+    minLon = Math.min(minLon, p.lon); maxLon = Math.max(maxLon, p.lon)
+  }
+  const dLat = (maxLat - minLat) || 0.001
+  const dLon = (maxLon - minLon) || 0.001
+  return {
+    minLat: minLat - dLat * marginFrac, maxLat: maxLat + dLat * marginFrac,
+    minLon: minLon - dLon * marginFrac, maxLon: maxLon + dLon * marginFrac,
+  }
+}
+
+// RSSI-weighted Gaussian kernel-density grid over the points' bounds, normalized
+// 0..1. Each point adds weight * exp(-d^2 / 2sigma^2); sigma tightens for strong
+// points (stronger -> a sharper, more localized hot spot). Row 0 = minLat (south).
+export function densityGrid(points, opts = {}) {
+  const cols = opts.cols ?? DEFAULT_COLS
+  const rows = opts.rows ?? DEFAULT_ROWS
+  const bounds = boundsOf(points.length ? points : [{ lat: 0, lon: 0 }])
+  const grid = new Float32Array(rows * cols)
+  if (!points.length) return { grid, rows, cols, bounds }
+  const diagM = haversineM(
+    { lat: bounds.minLat, lon: bounds.minLon },
+    { lat: bounds.maxLat, lon: bounds.maxLon },
+  )
+  const baseSigma = Math.max(diagM * 0.12, 30)
+  let peak = 0
+  for (let r = 0; r < rows; r++) {
+    const lat = bounds.minLat + ((r + 0.5) / rows) * (bounds.maxLat - bounds.minLat)
+    for (let c = 0; c < cols; c++) {
+      const lon = bounds.minLon + ((c + 0.5) / cols) * (bounds.maxLon - bounds.minLon)
+      let v = 0
+      for (const p of points) {
+        const w = rssiWeight(p.rssi)
+        if (w === 0) continue
+        const sigma = baseSigma * (1.1 - 0.6 * w) // strong -> tighter kernel
+        const d = haversineM({ lat, lon }, p)
+        v += w * Math.exp(-(d * d) / (2 * sigma * sigma))
+      }
+      grid[r * cols + c] = v
+      if (v > peak) peak = v
+    }
+  }
+  if (peak > 0) for (let i = 0; i < grid.length; i++) grid[i] /= peak
+  return { grid, rows, cols, bounds }
+}
+
 // Split points into inliers/outliers. Robust center = coordinate-wise median;
 // outlier if distance > max(factor * medianDistance, floorM). This catches a
 // lone far stray (a colliding 1-byte node) without flagging GPS jitter in a
