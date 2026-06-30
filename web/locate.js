@@ -68,20 +68,31 @@ function boundsOf(points, marginFrac = 0.15) {
   }
 }
 
-// RSSI-weighted Gaussian kernel-density grid over the points' bounds, normalized
-// 0..1. Each point adds weight * exp(-d^2 / 2sigma^2); sigma tightens for strong
-// points (stronger -> a sharper, more localized hot spot). Row 0 = minLat (south).
+// RSSI-weighted Gaussian kernel-density grid, normalized 0..1. Each point adds
+// weight * exp(-d^2 / 2sigma^2); sigma tightens for strong points (stronger -> a
+// sharper hot spot). The grid bounds are the points' own bbox expanded by ~3*sigma
+// so the border always sits in near-zero density — the cloud fades to transparent
+// before the edge, leaving no rectangular artifact. Row 0 = minLat (south).
 export function densityGrid(points, opts = {}) {
   const cols = opts.cols ?? DEFAULT_COLS
   const rows = opts.rows ?? DEFAULT_ROWS
-  const bounds = boundsOf(points.length ? points : [{ lat: 0, lon: 0 }])
   const grid = new Float32Array(rows * cols)
-  if (!points.length) return { grid, rows, cols, bounds }
-  const diagM = haversineM(
-    { lat: bounds.minLat, lon: bounds.minLon },
-    { lat: bounds.maxLat, lon: bounds.maxLon },
-  )
-  const baseSigma = Math.max(diagM * 0.12, 30)
+  if (!points.length) return { grid, rows, cols, bounds: boundsOf([{ lat: 0, lon: 0 }]) }
+  // sigma from the points' OWN spread (not a margin-inflated box)
+  let minLat = Infinity, minLon = Infinity, maxLat = -Infinity, maxLon = -Infinity
+  for (const p of points) {
+    minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat)
+    minLon = Math.min(minLon, p.lon); maxLon = Math.max(maxLon, p.lon)
+  }
+  const spanM = haversineM({ lat: minLat, lon: minLon }, { lat: maxLat, lon: maxLon })
+  const baseSigma = Math.max(spanM * 0.12, 30)
+  // pad the box by 3*sigma so every border cell is >= 3 sigma from any point
+  const padLat = (3 * baseSigma) / 111320
+  const padLon = (3 * baseSigma) / (111320 * Math.cos((minLat * Math.PI) / 180))
+  const bounds = {
+    minLat: minLat - padLat, maxLat: maxLat + padLat,
+    minLon: minLon - padLon, maxLon: maxLon + padLon,
+  }
   let peak = 0
   for (let r = 0; r < rows; r++) {
     const lat = bounds.minLat + ((r + 0.5) / rows) * (bounds.maxLat - bounds.minLat)
