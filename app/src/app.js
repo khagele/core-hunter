@@ -323,10 +323,15 @@ function sendDiscover() {
 // Connect / disconnect
 // ---------------------------------------------------------------------------
 
+// The top-bar Connect button and the Settings-sheet connect/disconnect button
+// mirror the same connect/connecting/retry text, so every state change below
+// is applied to both in one go.
+function connectButtons() {
+  return [el('connect-btn'), el('ss-conn-btn')].filter(Boolean)
+}
+
 async function connectAll() {
-  const btn = el('connect-btn')
-  btn.disabled = true
-  btn.textContent = 'Connecting…'
+  connectButtons().forEach((btn) => { btn.disabled = true; btn.textContent = 'Connecting…' })
   state.bleError = false
   state.gpsError = false
   refreshSplash()
@@ -386,8 +391,7 @@ async function connectAll() {
     refreshConnState()
   } catch (e) {
     console.error('[connect]', e)
-    btn.textContent = 'Connect (retry)'
-    btn.disabled = false
+    connectButtons().forEach((btn) => { btn.textContent = 'Connect (retry)'; btn.disabled = false })
     state.bleError = true
     await disconnectAll(true)
   }
@@ -407,10 +411,20 @@ function setHuntingChrome(connected) {
 // Mirror the connection state into the BLE-settings Connection section. No-op
 // until the settings sheet has been built.
 function refreshConnState() {
-  const dc = el('ss-disconnect')
-  if (!dc) return
+  const btn = el('ss-conn-btn')
+  if (!btn) return
   const connected = state.connected
-  dc.disabled = !connected
+  // Only flip the connected/disconnected look here — "Connecting…" and
+  // "Connect (retry)" text is set directly by connectAll()/disconnectAll()
+  // via connectButtons(), and must not be clobbered by this no-op else branch.
+  if (connected) {
+    btn.textContent = 'Disconnect'
+    btn.classList.remove('ss-connect')
+    btn.classList.add('ss-disconnect')
+  } else {
+    btn.classList.remove('ss-disconnect')
+    btn.classList.add('ss-connect')
+  }
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
@@ -438,9 +452,7 @@ async function disconnectAll(silent) {
   refreshSplash()
 
   if (!silent) {
-    const btn = el('connect-btn')
-    btn.textContent = 'Connect'
-    btn.disabled = false
+    connectButtons().forEach((btn) => { btn.textContent = 'Connect'; btn.disabled = false })
   }
 }
 
@@ -641,7 +653,7 @@ function buildSettingsSheet() {
           <dt>BLE</dt><dd id="ss-conn-ble">—</dd>
           <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
         </dl>
-        <button id="ss-disconnect" class="ss-disconnect" disabled>Disconnect</button>
+        <button id="ss-conn-btn" class="ss-connect">Connect</button>
       </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
@@ -681,9 +693,14 @@ function buildSettingsSheet() {
       <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
     </div>`
 
-  el('ss-disconnect').addEventListener('click', () => {
-    disconnectAll()
-    sheet.hidden = true
+  el('ss-conn-btn').addEventListener('click', () => {
+    if (state.connected) {
+      disconnectAll()
+      sheet.hidden = true
+    } else {
+      state.wakeLock.enable()
+      connectAll()
+    }
   })
   refreshConnState()
 

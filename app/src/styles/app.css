@@ -114,6 +114,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-conn-status dt { color: var(--ch-muted); }
 .ss-conn-status dd { margin: 0; color: var(--ch-text);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; }
+.ss-connect { border: none; border-radius: 11px; padding: 9px 18px;
+  background: var(--ch-accent); color: var(--ch-bg); font-weight: 650; font-size: 14px;
+  font-family: system-ui, sans-serif; cursor: pointer; }
+.ss-connect:disabled { background: var(--ch-muted); cursor: not-allowed; opacity: 0.45; }
 .ss-disconnect { border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
