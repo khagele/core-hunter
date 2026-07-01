@@ -5,7 +5,7 @@ import { getConfig } from './config.js'
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
@@ -43,6 +43,12 @@ export function createHuntMap(containerId) {
   map.on('dragstart', () => {
     if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) }
   })
+  // stopFollow mirrors the dragstart handler for the compass-button tap that
+  // stops following without an actual pan (pressing the button while it
+  // already shows the "following" glyph).
+  function stopFollow() {
+    if (follow) { follow = false; if (onFollow) onFollow(false) }
+  }
 
   function pointStyle(rec) {
     const tier = rssiTier(rec.rssi, currentOffset())
@@ -137,7 +143,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
+  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
 }
 
 function popupHtml(r, isolatedId) {
