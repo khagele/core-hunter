@@ -116,8 +116,9 @@ export function createHuntMap(containerId) {
 
 function popupHtml(r) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+  const kindLabel = { channel_name: 'name', advert_pubkey: 'node', discover_pubkey: 'node', relay: 'relay' }[r.sender_kind] || 'src'
   const senderLine = r.sender_id
-    ? `${r.sender_kind === 'channel_name' ? 'name' : r.sender_kind === 'advert_pubkey' ? 'node' : 'src'} ${esc(r.sender_label || r.sender_id)}`
+    ? `${kindLabel} ${esc(r.sender_label || r.sender_id)}`
     : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
