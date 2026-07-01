@@ -87,6 +87,10 @@ const state = {
   gps: new Gps(),
   queue: new Queue(),
   publisher: null,
+  // Manual override (Settings) — while true, MQTT stays disconnected and the
+  // connect flow skips it entirely; un-pausing reconnects and the drain loop
+  // catches up on whatever piled up in IndexedDB while paused.
+  mqttPaused: false,
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -359,6 +363,23 @@ function connectButtons() {
   return [el('connect-btn'), el('ss-conn-btn')].filter(Boolean)
 }
 
+// Creates and connects a fresh Publisher, replacing any prior instance. No-op
+// if MQTT isn't configured. Called on BLE connect, and again when the user
+// un-pauses MQTT from Settings while already connected.
+function connectMqtt() {
+  const cfg = getConfig()
+  if (!cfg || !cfg.mqttUrl || !state.rxPubkey) return
+  state.publisher = new Publisher({
+    url: cfg.mqttUrl,
+    username: cfg.mqttUsername,
+    password: cfg.mqttPassword,
+    clientId: state.rxPubkey,
+  })
+  state.publisher.connect()
+    .then(() => setDot('dot-mqtt', true))
+    .catch((e) => console.error('[mqtt]', e))
+}
+
 async function connectAll() {
   connectButtons().forEach((btn) => { btn.disabled = true; btn.textContent = 'Connecting…' })
   state.bleError = false
@@ -395,22 +416,13 @@ async function connectAll() {
     // 3. GPS
     startGpsWatch()
 
-    // 4. MQTT publisher — non-fatal. Receptions are written to IndexedDB first
-    // and the drain loop publishes them, so a slow or unreachable broker must not
-    // fail the connect or tear down BLE. Connect in the background; the render
-    // tick keeps dot-mqtt in sync with the live publisher state.
-    const cfg = getConfig()
-    if (cfg && cfg.mqttUrl) {
-      state.publisher = new Publisher({
-        url: cfg.mqttUrl,
-        username: cfg.mqttUsername,
-        password: cfg.mqttPassword,
-        clientId: state.rxPubkey,
-      })
-      state.publisher.connect()
-        .then(() => setDot('dot-mqtt', true))
-        .catch((e) => console.error('[mqtt]', e))
-    }
+    // 4. MQTT publisher — non-fatal, and skipped entirely while paused (see
+    // the Settings "Pause MQTT" toggle). Receptions are written to IndexedDB
+    // first and the drain loop publishes them, so a slow or unreachable
+    // broker must not fail the connect or tear down BLE. Connect in the
+    // background; the render tick keeps dot-mqtt in sync with the live
+    // publisher state.
+    if (!state.mqttPaused) connectMqtt()
 
     // 5. Register frame handler
     state.transport.onFrame(processFrame)
@@ -458,8 +470,9 @@ function refreshConnState() {
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
-  el('ss-conn-mqtt').textContent =
-    state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected'
+  el('ss-conn-mqtt').textContent = state.mqttPaused
+    ? 'Paused'
+    : (state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected')
 }
 
 async function disconnectAll(silent) {
@@ -683,6 +696,10 @@ function buildSettingsSheet() {
           <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
         </dl>
         <button id="ss-conn-btn" class="ss-connect">Connect</button>
+        <label class="fs-row" id="ss-row-mqtt-pause">
+          <span>Pause MQTT</span>
+          <input type="checkbox" id="ss-mqtt-pause" />
+        </label>
       </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
@@ -732,6 +749,21 @@ function buildSettingsSheet() {
     }
   })
   refreshConnState()
+
+  const mqttPause = el('ss-mqtt-pause')
+  mqttPause.checked = state.mqttPaused
+  el('ss-row-mqtt-pause').classList.toggle('active', state.mqttPaused)
+  mqttPause.addEventListener('change', () => {
+    state.mqttPaused = mqttPause.checked
+    el('ss-row-mqtt-pause').classList.toggle('active', state.mqttPaused)
+    if (state.mqttPaused) {
+      if (state.publisher) { state.publisher.end(); state.publisher = null }
+      setDot('dot-mqtt', false)
+    } else if (state.connected) {
+      connectMqtt()
+    }
+    refreshConnState()
+  })
 
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)
