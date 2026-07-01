@@ -3,16 +3,19 @@
 export class Gps {
   constructor() { this._last = null; this._watchId = null; }
 
-  // start(onFix): begins watching; onFix (optional) fires on every position
-  // update so the UI can track GPS continuously, independent of RX packets.
-  start(onFix) {
+  // start(onFix, onError): begins watching; onFix (optional) fires on every
+  // position update so the UI can track GPS continuously, independent of RX
+  // packets. onError (optional) fires on permission-denied/timeout/etc, so
+  // the UI can surface it (e.g. the startup splash) instead of hunting
+  // silently doing nothing.
+  start(onFix, onError) {
     if (!navigator.geolocation) throw new Error('geolocation unavailable');
     this._watchId = navigator.geolocation.watchPosition(
       (p) => {
         this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy };
         if (onFix) onFix(this._last);
       },
-      () => {},
+      (err) => { if (onError) onError(err); },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
   }

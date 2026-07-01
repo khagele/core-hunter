@@ -28,6 +28,7 @@ import { createFeedPanel } from './feedpanel.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
+import { splashState, SPLASH_COPY } from './splash.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -65,6 +66,8 @@ function saveManualFix(fix) {
   } catch (_) {}
 }
 
+const initialManualFix = loadManualFix()
+
 const state = {
   transport: null,
   gps: new Gps(),
@@ -82,11 +85,16 @@ const state = {
   // On app restart the Set is empty, so rows are republished; that is fine.
   published: new Set(),
   ignore: loadIgnore(),
-  manualFix: loadManualFix(),
+  manualFix: initialManualFix,
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
   filter: { ...DEFAULT_FILTER },
+  // Startup splash (see splash.js) — hides once hasFix flips true. A manual
+  // fix override (dev only) counts as having a fix already.
+  hasFix: !!initialManualFix,
+  bleError: false,
+  gpsError: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +146,28 @@ function setDot(id, on) {
 // default (closed-sheet signal). Called wherever state.filter changes.
 function refreshFilterIndicator() {
   el('filter-btn').classList.toggle('active', isFilterActive(state.filter))
+}
+
+// Splash: shown until the first GPS fix, per splashState(). Call wherever
+// hasFix/connected/bleError/gpsError changes.
+function refreshSplash() {
+  const s = splashState(state)
+  el('splash').hidden = s === 'hidden'
+  if (s === 'hidden') return
+  el('splash-status').textContent = SPLASH_COPY[s]
+  el('splash-retry-gps').hidden = s !== 'gps-error'
+}
+
+// (Re-)starts the GPS watch, e.g. on connect or after the user retries
+// location from the splash. Shared so both call sites update state the same way.
+function startGpsWatch() {
+  state.gps.start(
+    (fix) => {
+      if (state.map) state.map.setPosition(fix.lat, fix.lon)
+      if (!state.hasFix) { state.hasFix = true; refreshSplash() }
+    },
+    () => { state.gpsError = true; refreshSplash() }
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +279,9 @@ async function connectAll() {
   const btn = el('connect-btn')
   btn.disabled = true
   btn.textContent = 'Connecting…'
+  state.bleError = false
+  state.gpsError = false
+  refreshSplash()
 
   try {
     // Dispose any prior transport first. On a spontaneous BLE drop the old
@@ -269,6 +302,7 @@ async function connectAll() {
     await state.transport.connect()
     state.connected = true
     setDot('dot-ble', true)
+    refreshSplash()
 
     // 2. Self info (companion pubkey + name)
     const info = await requestSelfInfo(state.transport, 'core-hunter')
@@ -276,9 +310,7 @@ async function connectAll() {
     state.name = info.name || ''
 
     // 3. GPS
-    state.gps.start((fix) => {
-      if (state.map) state.map.setPosition(fix.lat, fix.lon)
-    })
+    startGpsWatch()
 
     // 4. MQTT publisher
     const cfg = getConfig()
@@ -303,6 +335,7 @@ async function connectAll() {
     console.error('[connect]', e)
     btn.textContent = 'Connect (retry)'
     btn.disabled = false
+    state.bleError = true
     await disconnectAll(true)
   }
 }
@@ -348,6 +381,7 @@ async function disconnectAll(silent) {
 
   setHuntingChrome(false)
   refreshConnState()
+  refreshSplash()
 
   if (!silent) {
     const btn = el('connect-btn')
@@ -713,8 +747,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  // Retry location — re-starts the GPS watch (e.g. after the user grants the
+  // permission the browser prompted for, or re-enables location services).
+  el('splash-retry-gps').addEventListener('click', () => {
+    state.gpsError = false
+    refreshSplash()
+    try { state.gps.stop() } catch (_) {}
+    startGpsWatch()
+  })
+
   // Reflect the initial filter state on the button (inactive at default)
   refreshFilterIndicator()
+  refreshSplash()
 
   // Start background loops
   renderTick()
