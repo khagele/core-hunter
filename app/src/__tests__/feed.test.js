@@ -28,14 +28,19 @@ describe('feedItems', () => {
 })
 
 describe('senderList', () => {
-  it('keeps only channel_name + advert_pubkey kinds', () => {
+  it('keeps channel_name + advert_pubkey + relay kinds, drops the rest', () => {
     const out = senderList([
       rec({ sender_kind: 'channel_name', sender_id: 'A' }),
       rec({ sender_kind: 'advert_pubkey', sender_id: 'B' }),
-      rec({ sender_kind: 'direct_hash', sender_id: 'C' }),
+      rec({ sender_kind: 'relay', sender_id: 'C' }),
+      rec({ sender_kind: 'direct_hash', sender_id: 'D' }),
       rec({ sender_kind: null, sender_id: null }),
     ], {})
-    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B'])
+    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B', 'C'])
+  })
+  it('includes a last-hop repeater (relay-kind) as a selectable target', () => {
+    const out = senderList([rec({ sender_kind: 'relay', sender_id: 'abcd' })], {})
+    expect(out.map((r) => r.sender_id)).toEqual(['abcd'])
   })
   it('drops ignored sender ids (case-insensitive)', () => {
     const out = senderList([rec({ sender_id: 'AA' }), rec({ sender_id: 'bb' })], { ignore: new Set(['aa']) })
