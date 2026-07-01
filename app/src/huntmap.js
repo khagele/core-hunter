@@ -60,7 +60,9 @@ export function createHuntMap(containerId) {
   function applyBasemap() {
     const which = cssVar('--ch-basemap') || 'dark'
     if (base) map.removeLayer(base)
-    base = L.tileLayer(TILES[which] || TILES.dark, { maxZoom: 19 }).addTo(map)
+    // CARTO's raster basemaps serve native tiles up to z20; maxZoom was capped
+    // at 19, one level short of what the tiles actually support.
+    base = L.tileLayer(TILES[which] || TILES.dark, { maxZoom: 20 }).addTo(map)
   }
   applyBasemap()
   const pointLayer = L.layerGroup().addTo(map)
