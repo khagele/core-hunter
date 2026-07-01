@@ -37,10 +37,8 @@ export function cachedName(key) {
 // rest in their original order. When companionSf is null/undefined (or no
 // resolver matches), returns the resolvers in config order unchanged.
 //
-// NOTE: companionSf is currently always undefined — the companion's spreading
-// factor is not yet readable from SELF_INFO/DEVICE_INFO firmware responses.
-// SF-ordered selection is firmware-gated (same pattern as sender_role). Wire
-// companionSf once the firmware exposes SF in its info replies.
+// companionSf is read from the companion's SELF_INFO reply (byte 56) and passed
+// in by app.js; it is null when the frame is too short or out of range.
 export function orderResolvers(resolvers, companionSf) {
   if (companionSf == null) return resolvers.slice();
   const matching = resolvers.filter(r => r.sf === companionSf);
@@ -50,8 +48,9 @@ export function orderResolvers(resolvers, companionSf) {
 }
 
 // resolveName resolves a heard key (2-3 byte prefix or full pubkey) to a name.
-// companionSf defaults to undefined — SF is firmware-gated (see orderResolvers
-// comment above). Resolvers are queried in order; first unambiguous hit wins.
+// companionSf (the connected companion's spreading factor) puts the matching-SF
+// resolver first; null falls back to config order. Resolvers are queried in
+// order; first unambiguous hit wins.
 // Returns '' when unconfigured, ambiguous, or unknown.
 // Network/transport errors are NOT cached (retry later); '' is only cached
 // when all resolvers responded but none produced a unique name.

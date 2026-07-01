@@ -88,6 +88,7 @@ const state = {
   publisher: null,
   rxPubkey: '',
   name: '',
+  sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
   feed: null,
   targetList: null,
@@ -225,7 +226,7 @@ function enrichNames(rows) {
     const key = resolvableKey(r)
     if (!key) continue
     const hit = cachedName(key)
-    if (hit === undefined) resolveName(key).catch(() => {})
+    if (hit === undefined) resolveName(key, state.sf).catch(() => {})
     else if (hit) r.sender_label = hit
   }
 }
@@ -322,10 +323,11 @@ async function connectAll() {
     setDot('dot-ble', true)
     refreshSplash()
 
-    // 2. Self info (companion pubkey + name)
+    // 2. Self info (companion pubkey + name + spreading factor)
     const info = await requestSelfInfo(state.transport, 'core-hunter')
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
+    state.sf = info.sf ?? null
 
     // 3. GPS
     startGpsWatch()
@@ -382,6 +384,7 @@ function refreshConnState() {
   dc.disabled = !connected
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
+  el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
   el('ss-conn-mqtt').textContent =
     state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected'
@@ -605,6 +608,7 @@ function buildSettingsSheet() {
         <dl class="ss-conn-status">
           <dt>Companion</dt><dd id="ss-conn-name">—</dd>
           <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
+          <dt>Spreading factor</dt><dd id="ss-conn-sf">—</dd>
           <dt>BLE</dt><dd id="ss-conn-ble">—</dd>
           <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
         </dl>
