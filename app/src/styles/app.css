@@ -52,26 +52,27 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 9px; letter-spacing: .1em; color: var(--ch-muted); text-transform: uppercase;
   margin-top: -2px; }
 
-/* Connect + Discover button row */
+/* Connect button row */
 #hud-btn-row { display: flex; gap: 8px; margin-top: 4px; }
 #connect-btn { flex: 1; border: none; border-radius: 11px; padding: 11px;
   background: var(--ch-accent); color: var(--ch-bg); font-weight: 650; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
-#discover-btn { flex: 0 0 auto; border: 1px solid var(--ch-accent-2); border-radius: 11px;
-  padding: 11px 18px; background: transparent; color: var(--ch-accent-2); font-weight: 600;
-  font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
-#discover-btn:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
-  opacity: 0.45; }
+
+/* Settings button lives in the top bar (right of the status dots) */
+#topbar-right { display: flex; align-items: center; gap: 10px; }
+.topbar-btn { position: relative; border: none; background: transparent; color: var(--ch-text);
+  font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
-#layer-toggle, #filter-btn, #settings-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #filter-btn, #discover-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-#layer-toggle { bottom: 192px; } #filter-btn { bottom: 246px; } #settings-btn { bottom: 300px; }
+#layer-toggle { bottom: 192px; } #filter-btn { bottom: 246px; } #discover-btn { bottom: 300px; }
 #recenter-btn { bottom: 354px; }
-#layer-toggle svg, #filter-btn svg, #recenter-btn svg { pointer-events: none; }
+#layer-toggle svg, #filter-btn svg, #discover-btn svg, #recenter-btn svg { pointer-events: none; }
+#discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
 /* Active-filter indicator: accent badge in the corner of the filter FAB */
 #filter-btn.active { color: var(--ch-accent); }
