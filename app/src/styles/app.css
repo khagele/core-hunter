@@ -80,6 +80,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   width: 11px; height: 11px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
 
+/* Active-settings indicator: same accent dot, on the topbar settings button */
+#settings-btn.active { color: var(--ch-accent); }
+#settings-btn.active::after { content: ''; position: absolute; top: -2px; right: -2px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--ch-accent); border: 2px solid var(--ch-surface); }
+
 /* Each filter on its own row: label then control, left-aligned */
 .fs-row { display: flex; align-items: center; gap: 8px;
   margin: 8px 0; font-size: 14px; color: var(--ch-text); }

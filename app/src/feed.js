@@ -1,5 +1,11 @@
 const FEED_KINDS = new Set(['channel_name', 'advert_pubkey'])
 
+// TARGET_KINDS additionally allows 'relay' — a last-hop repeater attributed via
+// path[last] of a relayed FLOOD packet (see meshpacket.js classifyReception).
+// It carries no message text, so it stays out of FEED_KINDS/the message feed,
+// but it is a valid directly-heard node and belongs in the target dropdown.
+const TARGET_KINDS = new Set([...FEED_KINDS, 'relay'])
+
 export function feedItems(records, { ignore, limit = 50 } = {}) {
   const ig = ignore || new Set()
   return (records || [])
@@ -17,7 +23,7 @@ function dedupeSenders(records, ignore) {
   const ig = ignore || new Set()
   const bySender = new Map()
   for (const r of records || []) {
-    if (!FEED_KINDS.has(r.sender_kind)) continue
+    if (!TARGET_KINDS.has(r.sender_kind)) continue
     if (r.sender_id == null) continue
     const id = String(r.sender_id)
     if (ig.has(id.toLowerCase())) continue
