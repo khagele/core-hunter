@@ -301,7 +301,7 @@ async function renderTick() {
     if (state.feed) {
       state.feed.render(feedItems(rows, { ignore: state.ignore, limit: 50 }), now, state.filter.sender && state.filter.sender.id)
     }
-    if (state.targetList) state.targetList.render(rows, state.ignore, now)
+    if (state.targetList) state.targetList.render(rows, state.ignore, now, state.filter.sender && state.filter.sender.id)
   } catch (_) {
     // silent — render failure must not crash the loop
   }
