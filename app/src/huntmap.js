@@ -1,11 +1,50 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset } from './signal.js'
 import { getConfig } from './config.js'
+import { locate } from './locate.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
+// Density-cloud ramp from the --ch-sig-* tokens (warm -> hot only), mirrors
+// web/map.js's heatStops/heatColor so the single-hunter locate overlay looks
+// the same as the multi-hunter one.
+function heatStops() {
+  const hex = (h) => { const s = h.replace('#', '').trim(); const n = s.length === 3 ? s.split('').map((x) => x + x).join('') : s; return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)] }
+  return ['--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
+}
+function heatColor(v, stops) {
+  const t = Math.max(0, Math.min(1, v)) * (stops.length - 1)
+  const i = Math.min(stops.length - 2, Math.floor(t))
+  const f = t - i
+  const a = stops[i], b = stops[i + 1]
+  return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f))
+}
+// Paint a normalized density grid to a canvas and return a Leaflet image overlay.
+function heatmapOverlay(hm) {
+  const { grid, rows, cols, bounds } = hm
+  const canvas = document.createElement('canvas')
+  canvas.width = cols; canvas.height = rows
+  const ctx = canvas.getContext('2d')
+  const img = ctx.createImageData(cols, rows)
+  const stops = heatStops()
+  const FLOOR = 0.12
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = grid[r * cols + c]
+      const y = rows - 1 - r
+      const idx = (y * cols + c) * 4
+      const [cr, cg, cb] = heatColor(v, stops)
+      img.data[idx] = cr; img.data[idx + 1] = cg; img.data[idx + 2] = cb
+      img.data[idx + 3] = v < FLOOR ? 0 : Math.round(210 * (v - FLOOR) / (1 - FLOOR))
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return L.imageOverlay(canvas.toDataURL(), [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]],
+    { opacity: 0.7, interactive: false })
+}
+
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, onLocate() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
@@ -26,7 +65,8 @@ export function createHuntMap(containerId) {
   applyBasemap()
   const pointLayer = L.layerGroup().addTo(map)
   const hexLayer = L.layerGroup().addTo(map)
-  let mode = 'both', here = null, lastIsolatedId = null
+  const locateLayer = L.layerGroup().addTo(map)
+  let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null
 
   let popupOpen = false
   map.on('popupopen', () => { popupOpen = true })
@@ -79,11 +119,40 @@ export function createHuntMap(containerId) {
     draw()
   }
 
+  // Single-hunter "locate": when a sender is isolated, estimate its position
+  // from this hunter's own receptions of it (RSSI-weighted centroid + density
+  // heatmap, same pure algorithm as the multi-hunter web version — see
+  // locate.js). No API/DB read here, just whatever this hunter has walked past.
+  function drawLocate(records) {
+    locateLayer.clearLayers()
+    if (!lastIsolatedId) { if (onLocateCb) onLocateCb(null); return }
+    const points = records
+      .filter((r) => r.sender_id === lastIsolatedId && r.lat != null && r.lon != null)
+      .map((r) => ({ lat: r.lat, lon: r.lon, rssi: r.rssi }))
+    const res = locate(points)
+    if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
+    if (res.centroid) {
+      L.marker([res.centroid.lat, res.centroid.lon], {
+        icon: L.divIcon({ className: '', html: '<div class="lc-centroid"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+      }).bindTooltip('weighted estimate').addTo(locateLayer)
+    }
+    if (res.strongest) {
+      L.marker([res.strongest.lat, res.strongest.lon], {
+        icon: L.divIcon({ className: '', html: '<div class="lc-strongest">★</div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+      }).bindTooltip('strongest reception').addTo(locateLayer)
+    }
+    if (onLocateCb) onLocateCb(res)
+  }
+  // onLocate registers a callback invoked with the locate() result (or null
+  // when no sender is isolated) every render tick — drives the info readout.
+  function onLocate(cb) { onLocateCb = cb }
+
   function draw() {
     if (popupOpen) return   // don't rebuild markers while the user is inspecting a popup (it would close it)
     if (zooming) return     // mid zoom-animation: keep current layers; zoomend triggers a clean rebuild
     const records = lastRecords
     pointLayer.clearLayers(); hexLayer.clearLayers()
+    drawLocate(records)
     if (mode !== 'hex') {
       for (const r of records) {
         if (r.lat == null || r.lon == null) continue
@@ -143,7 +212,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
+  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, onLocate, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
 }
 
 function popupHtml(r, isolatedId) {

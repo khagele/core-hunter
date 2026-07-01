@@ -174,6 +174,33 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
+// Locate info readout — driven by huntmap.js's onLocate callback, fired every
+// render tick with the single-hunter locate() result for the isolated sender
+// (or null when nothing is isolated).
+function updateLocateInfo(res) {
+  const box = el('locate-info')
+  if (!res) { box.hidden = true; return }
+  box.hidden = false
+  // AGENTS.md §7: any output implying a target's location must state it is
+  // inferred from radio measurements, not GPS-tracked. Reuse the splash wording.
+  const disclaimer = `<div class="lc-muted lc-disclaimer">${SPLASH_DISCLAIMER}</div>`
+  if (!res.centroid) {
+    box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+, walk/drive around a bit).</div>`
+      + disclaimer
+    return
+  }
+  const s = res.stats
+  const radius = s.searchRadiusM != null ? Math.round(s.searchRadiusM) + ' m' : '—'
+  const enc = Math.round(s.encirclement * 100)
+  const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — walk/drive around the estimate to tighten.</div>' : ''
+  const strong = res.strongest ? ` · ★ strongest ${res.strongest.rssi ?? '—'} dBm` : ''
+  box.innerHTML = `<h4>Locate</h4>`
+    + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
+    + encHint
+    + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. From your own readings only.</div>`
+    + disclaimer
+}
+
 // Rotating splash tips: the pinned disclaimer plus one cycling hunting tip,
 // shown only while waiting for a GPS fix so the wait is spent learning to hunt.
 let tipTimer = null
@@ -922,6 +949,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     else state.map.recenter()
   })
   if (state.map) state.map.onFollowChange(updateCompassIcon)
+  if (state.map) state.map.onLocate(updateLocateInfo)
 
   el('filter-btn').addEventListener('click', () => {
     const sheet = el('filter-sheet')
