@@ -269,7 +269,7 @@ async function renderTick() {
     enrichNames(rows)
     if (state.map) {
       const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-      state.map.render(rows.filter((r) => fn(r, now)), now)
+      state.map.render(rows.filter((r) => fn(r, now)), state.filter.sender && state.filter.sender.id)
     }
     if (state.feed) {
       state.feed.render(feedItems(rows, { ignore: state.ignore, limit: 50 }), now, state.filter.sender && state.filter.sender.id)
