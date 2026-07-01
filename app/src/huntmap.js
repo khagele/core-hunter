@@ -44,7 +44,7 @@ function heatmapOverlay(hm) {
 }
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, onLocate() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
@@ -68,7 +68,7 @@ export function createHuntMap(containerId) {
   const pointLayer = L.layerGroup().addTo(map)
   const hexLayer = L.layerGroup().addTo(map)
   const locateLayer = L.layerGroup().addTo(map)
-  let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null
+  let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null, locateVisible = true
 
   let popupOpen = false
   map.on('popupopen', () => { popupOpen = true })
@@ -131,7 +131,11 @@ export function createHuntMap(containerId) {
     const points = records
       .filter((r) => r.sender_id === lastIsolatedId && r.lat != null && r.lon != null)
       .map((r) => ({ lat: r.lat, lon: r.lon, rssi: r.rssi }))
+    // Always compute — the FAB toggle (setLocateVisible) only hides the
+    // rendered overlay/readout, so the estimate is instantly available with
+    // no recompute lag whenever the user switches it back on.
     const res = locate(points)
+    if (!locateVisible) { if (onLocateCb) onLocateCb(null); return }
     if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
     if (res.centroid) {
       L.marker([res.centroid.lat, res.centroid.lon], {
@@ -146,8 +150,13 @@ export function createHuntMap(containerId) {
     if (onLocateCb) onLocateCb(res)
   }
   // onLocate registers a callback invoked with the locate() result (or null
-  // when no sender is isolated) every render tick — drives the info readout.
+  // when no sender is isolated, or the overlay is toggled off) every render
+  // tick — drives the info readout.
   function onLocate(cb) { onLocateCb = cb }
+  // setLocateVisible toggles the heatmap/centroid/strongest overlay + info
+  // readout on or off without touching the underlying estimate, which keeps
+  // running every tick regardless (see drawLocate).
+  function setLocateVisible(v) { locateVisible = !!v; draw() }
 
   function draw() {
     if (popupOpen) return   // don't rebuild markers while the user is inspecting a popup (it would close it)
@@ -214,7 +223,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, onLocate, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
+  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
 }
 
 function popupHtml(r, isolatedId) {
