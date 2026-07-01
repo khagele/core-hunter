@@ -2,6 +2,13 @@ import { getPayloadTypeName, getDeviceRoleName } from './decode.js'
 
 const PT_ADVERT = 4
 const PT_GROUP_TEXT = 5
+const PT_TRACE = 9 // path bytes are per-hop SNR, not node ids — never attributable
+
+// Route type = low 2 header bits. FLOOD routes append forwarders at the END of
+// the path, so path[last] is the immediate RF transmitter (a relay we heard
+// directly). DIRECT routes consume from the front, so their path[last] is not
+// who we heard — skip. (Ported from corescope-rx / CoreScope's deriveHeardKey.)
+function isFloodRoute(rt) { return rt === 0 || rt === 1 }
 
 export function bytesToHex(bytes) {
   let s = '';
@@ -23,15 +30,34 @@ export function classifyReception(decoded, channelNameFor = () => null) {
   let sender = { kind: null, id: null, label: null }
   let channel = null
   let text = null
+  // "heard directly" = we received the sender node's own transmission: the
+  // original sender at 0 hops, OR the last relay (path[last]) of a FLOOD packet
+  // (that relay re-broadcast to us, so we heard it directly). Both are valid
+  // location measurements; only these are captured.
+  let heardDirect = false
 
-  if (pt === PT_ADVERT && d.publicKey) {
+  if (pt === PT_TRACE) {
+    // never attributable — path bytes are SNR values, not hop hashes
+  } else if (hops > 0) {
+    // relayed: only a FLOOD route's path[last] is the immediate transmitter.
+    if (isFloodRoute(decoded.routeType) && Array.isArray(decoded.path) && decoded.path.length) {
+      const last = String(decoded.path[decoded.path.length - 1]).toLowerCase()
+      if (last.length >= 4) { // >= 2 bytes; 1-byte hashes are collision-prone
+        sender = { kind: 'relay', id: last, role: null, label: null }
+        heardDirect = true
+      }
+    }
+    if (pt === PT_GROUP_TEXT) channel = channelNameFor(d.channelHash)
+  } else if (pt === PT_ADVERT && d.publicKey) {
     const role = d.appData && d.appData.deviceRole != null ? getDeviceRoleName(d.appData.deviceRole) : null
     sender = { kind: 'advert_pubkey', id: d.publicKey.toLowerCase(), role, label: (d.appData && d.appData.name) || null }
+    heardDirect = true
   } else if (pt === PT_GROUP_TEXT) {
     channel = channelNameFor(d.channelHash)
     if (d.decrypted && d.decrypted.sender) {
       sender = { kind: 'channel_name', id: d.decrypted.sender, label: d.decrypted.sender }
       text = d.decrypted.message || null
+      heardDirect = true
     }
   } else if (d.publicKey) {
     // Discover/Control reply: carries the responding node's pubkey prefix + type
@@ -39,10 +65,12 @@ export function classifyReception(decoded, channelNameFor = () => null) {
     // No name in the packet → label stays null so the name is resolved by ID later.
     const id = d.publicKey.toLowerCase()
     sender = { kind: 'discover_pubkey', id, role: d.nodeTypeName || null, label: null }
+    heardDirect = true
   } else if (d.sourceHash) {
     const id = String(d.sourceHash).toLowerCase()
     sender = { kind: 'direct_hash', id, label: id }
+    heardDirect = true
   }
 
-  return { packetType: getPayloadTypeName(pt), hops, isDirect: hops === 0, sender, channel, text }
+  return { packetType: getPayloadTypeName(pt), hops, isDirect: heardDirect, sender, channel, text }
 }

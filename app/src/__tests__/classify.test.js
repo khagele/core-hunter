@@ -35,8 +35,26 @@ describe('classifyReception', () => {
     expect(c.sender).toEqual({ kind: null, id: null, label: null })
     expect(c.text).toBeNull()
   })
-  it('hops from pathLength; relayed not direct', () => {
+  it('hops from pathLength; relayed non-flood not direct', () => {
     const c = classifyReception(mk(1, { sourceHash: 'aa' }, 3))
     expect(c.hops).toBe(3); expect(c.isDirect).toBe(false)
+  })
+  it('flood relay (hops>0, FLOOD) → relay sender from path[last], heard directly', () => {
+    const c = classifyReception({ payloadType: 0, pathLength: 2, routeType: 1, path: ['AABB', 'CCDD'], payload: { decoded: {} } })
+    expect(c.sender).toEqual({ kind: 'relay', id: 'ccdd', role: null, label: null })
+    expect(c.isDirect).toBe(true)
+    expect(c.hops).toBe(2)
+  })
+  it('direct-route relay (hops>0, not FLOOD) → not attributed', () => {
+    const c = classifyReception({ payloadType: 0, pathLength: 2, routeType: 2, path: ['AABB', 'CCDD'], payload: { decoded: {} } })
+    expect(c.sender.id).toBeNull(); expect(c.isDirect).toBe(false)
+  })
+  it('1-byte flood path hash excluded (collision-prone)', () => {
+    const c = classifyReception({ payloadType: 0, pathLength: 1, routeType: 1, path: ['AB'], payload: { decoded: {} } })
+    expect(c.sender.id).toBeNull()
+  })
+  it('TRACE with a path is never attributed', () => {
+    const c = classifyReception({ payloadType: 9, pathLength: 3, routeType: 1, path: ['AABB', 'CCDD', 'EEFF'], payload: { decoded: {} } })
+    expect(c.sender.id).toBeNull(); expect(c.isDirect).toBe(false)
   })
 })
