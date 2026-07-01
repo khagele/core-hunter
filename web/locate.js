@@ -3,8 +3,14 @@
 // calibration, no DOM/Leaflet. See docs/superpowers/specs/2026-06-30-rssi-locate-design.md.
 
 const R_EARTH_M = 6371000
-const RSSI_MIN = -120 // weak end of the weight ramp (dBm)
-const RSSI_MAX = -40 // strong end of the weight ramp (dBm)
+// Receptions at or above this RSSI (dBm) are treated as "on top of the node" and
+// weighted equally. Validated against 9 known-location repeaters: a plain linear
+// ramp let a crowd of weak far receptions out-vote the few loud near ones (mean
+// error 1309 m); linear-power weighting cut that to ~671 m. The cap saturates
+// physically-implausible strong outliers (e.g. a mislabeled -22 dBm sample at
+// 2.3 km) so a single bad-GPS point can't seize the whole estimate, while leaving
+// legitimate on-top readings (-50..-56 dBm seen in the field) unclipped.
+const RSSI_CAP = -55
 
 // Great-circle distance in metres between two {lat, lon}.
 export function haversineM(a, b) {
@@ -17,11 +23,14 @@ export function haversineM(a, b) {
   return 2 * R_EARTH_M * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-// RSSI (dBm) -> weight in [0,1], linear over RSSI_MIN..RSSI_MAX, clamped.
+// RSSI (dBm) -> weight proportional to linear received power (10x per 10 dB),
+// normalized so the cap maps to 1.0 and weaker receptions fade toward 0. This
+// makes the loud near samples dominate the weighted centroid instead of being
+// averaged away by the weak-signal crowd. 0 for null/NaN.
 export function rssiWeight(rssi) {
   if (rssi == null || Number.isNaN(rssi)) return 0
-  const w = (rssi - RSSI_MIN) / (RSSI_MAX - RSSI_MIN)
-  return Math.max(0, Math.min(1, w))
+  const clamped = Math.min(rssi, RSSI_CAP)
+  return 10 ** ((clamped - RSSI_CAP) / 10)
 }
 
 // RSSI-weighted centroid of [{lat,lon,rssi}]. null when total weight is 0.
