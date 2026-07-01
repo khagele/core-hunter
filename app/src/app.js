@@ -797,6 +797,36 @@ function updateLayerIcon() {
   el('layer-toggle').setAttribute('aria-label', `Toggle layers (${mode})`)
 }
 
+// ---------------------------------------------------------------------------
+// Compass mode (map follow toggle) — pwa only
+// ---------------------------------------------------------------------------
+
+// While following, the map auto-centres on each GPS fix (north stays up —
+// Leaflet never rotates). Tapping the button or panning stops following; a
+// second tap recentres and resumes it. The icon shows the state you'll get
+// if you tap: re-center glyph while following (tap to go static), compass
+// glyph once static (tap to resume following).
+const COMPASS_ICONS = {
+  following: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="10" cy="10" r="4"/>
+    <line x1="10" y1="1" x2="10" y2="4"/>
+    <line x1="10" y1="16" x2="10" y2="19"/>
+    <line x1="1" y1="10" x2="4" y2="10"/>
+    <line x1="16" y1="10" x2="19" y2="10"/>
+  </svg>`,
+  static: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="10" cy="10" r="8"/>
+    <polygon points="10,4 12.2,10 10,16 7.8,10" fill="currentColor" stroke="none"/>
+  </svg>`,
+}
+
+let mapFollowing = true
+function updateCompassIcon(following) {
+  mapFollowing = following
+  el('recenter-btn').innerHTML = following ? COMPASS_ICONS.following : COMPASS_ICONS.static
+  el('recenter-btn').setAttribute('aria-label', following ? 'Stop following (compass mode)' : 'Resume following (compass mode)')
+}
+
 function cycleLayer() {
   layerIdx = (layerIdx + 1) % LAYER_MODES.length
   updateLayerIcon()
@@ -883,10 +913,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateLayerIcon()
   el('layer-toggle').addEventListener('click', cycleLayer)
 
-  // Recenter button — re-enables follow mode and snaps back to my position.
-  // Hidden while following; the map reveals it once the user pans away.
-  el('recenter-btn').addEventListener('click', () => { if (state.map) state.map.recenter() })
-  if (state.map) state.map.onFollowChange((following) => { el('recenter-btn').hidden = following })
+  // Compass button — always visible; toggles between following (auto-centre,
+  // north up) and static (stay where panned). See updateCompassIcon() above.
+  updateCompassIcon(mapFollowing)
+  el('recenter-btn').addEventListener('click', () => {
+    if (!state.map) return
+    if (mapFollowing) state.map.stopFollow()
+    else state.map.recenter()
+  })
+  if (state.map) state.map.onFollowChange(updateCompassIcon)
 
   el('filter-btn').addEventListener('click', () => {
     const sheet = el('filter-sheet')
