@@ -448,6 +448,7 @@ function refreshConnState() {
   // via connectButtons(), and must not be clobbered by this no-op else branch.
   if (connected) {
     btn.textContent = 'Disconnect'
+    btn.disabled = false
     btn.classList.remove('ss-connect')
     btn.classList.add('ss-disconnect')
   } else {
