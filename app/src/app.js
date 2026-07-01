@@ -22,6 +22,7 @@ import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
+import { isSettingsActive } from './settings.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset } from './signal.js'
 import { feedItems } from './feed.js'
@@ -164,6 +165,13 @@ function setDot(id, on) {
 // changes.
 function refreshFilterIndicator() {
   el('filter-btn').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+}
+
+// Light the settings button's badge when a setting differs from default
+// (attenuator non-zero, or manual position override set). Call wherever
+// state.attenuatorDb or state.manualFix changes.
+function refreshSettingsIndicator() {
+  el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
 // Splash: shown until the first GPS fix, per splashState(). Call wherever
@@ -664,6 +672,7 @@ function buildSettingsSheet() {
     state.attenuatorDb = Number(atten.value) || 0
     saveAttenuator(state.attenuatorDb)
     if (state.map) state.map.setAttenuator(state.attenuatorDb)
+    refreshSettingsIndicator()
   })
 
   const chk = el('ss-theme')
@@ -699,6 +708,7 @@ function buildSettingsSheet() {
     state.manualFix = { lat, lon, acc_m: 10 }
     saveManualFix(state.manualFix)
     updateManualFixStatus(statusEl)
+    refreshSettingsIndicator()
     if (state.map) {
       state.map.setPosition(lat, lon)
       state.map.centerOn(lat, lon)
@@ -710,6 +720,7 @@ function buildSettingsSheet() {
     state.manualFix = null
     saveManualFix(null)
     updateManualFixStatus(statusEl)
+    refreshSettingsIndicator()
   })
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
@@ -855,6 +866,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Reflect the initial filter state on the button (inactive at default)
   refreshFilterIndicator()
+  // Reflect persisted attenuator/manual-fix state on the settings button
+  refreshSettingsIndicator()
   refreshSplash()
 
   // Start background loops
