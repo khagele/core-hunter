@@ -181,8 +181,12 @@ function updateLocateInfo(res) {
   const box = el('locate-info')
   if (!res) { box.hidden = true; return }
   box.hidden = false
+  // AGENTS.md §7: any output implying a target's location must state it is
+  // inferred from radio measurements, not GPS-tracked. Reuse the splash wording.
+  const disclaimer = `<div class="lc-muted lc-disclaimer">${SPLASH_DISCLAIMER}</div>`
   if (!res.centroid) {
     box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+, walk/drive around a bit).</div>`
+      + disclaimer
     return
   }
   const s = res.stats
@@ -194,6 +198,7 @@ function updateLocateInfo(res) {
     + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
     + encHint
     + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. From your own readings only.</div>`
+    + disclaimer
 }
 
 // Rotating splash tips: the pinned disclaimer plus one cycling hunting tip,

@@ -25,6 +25,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
 #locate-info .lc-warn { color: var(--ch-sig-warm); }
 #locate-info .lc-muted { color: var(--ch-muted); }
+#locate-info .lc-disclaimer { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--ch-border);
+  font-size: 11px; }
 .lc-centroid { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ch-bg);
   background: var(--ch-sig-hot); box-shadow: 0 0 0 2px var(--ch-sig-hot); }
 .lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
