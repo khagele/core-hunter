@@ -52,8 +52,26 @@ export function createHuntMap(containerId) {
     }
   }
 
-  function render(records, nowMs) {
+  // Rendering is data-driven (the 1s tick calls render with fresh rows), but the
+  // hex resolution depends on the zoom and Leaflet misplaces vector layers if they
+  // are torn down and rebuilt mid zoom-animation — the rebuilt polygons miss the
+  // animation transform and appear shifted from the basemap until the next
+  // reproject. So cache the latest rows, skip rebuilds while a zoom is animating
+  // (the existing layers animate correctly), and do one clean rebuild on zoomend.
+  let lastRecords = []
+  let zooming = false
+  map.on('zoomstart', () => { zooming = true })
+  map.on('zoomend', () => { zooming = false; draw() })
+
+  function render(records) {
+    lastRecords = records
+    draw()
+  }
+
+  function draw() {
     if (popupOpen) return   // don't rebuild markers while the user is inspecting a popup (it would close it)
+    if (zooming) return     // mid zoom-animation: keep current layers; zoomend triggers a clean rebuild
+    const records = lastRecords
     pointLayer.clearLayers(); hexLayer.clearLayers()
     if (mode !== 'hex') {
       for (const r of records) {
