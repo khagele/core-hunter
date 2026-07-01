@@ -97,9 +97,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }
 .fs-chip.active { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); }
-#filter-sheet, #settings-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%;
+#filter-sheet, #settings-sheet, #target-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%;
   overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
   border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }
+#target-chip { cursor: pointer; }
 [hidden] { display: none !important; }
 .ss-conn-section { margin-top: 12px; }
 .ss-conn-status { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 10px;
@@ -161,3 +162,21 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .feed-mid { color: var(--ch-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-time { color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .feed-iso, .feed-ign { background: transparent; color: var(--ch-text); border: 0; padding: 0 10px; font-size: 1.1em; cursor: pointer; }
+
+/* ---- Target dropdown ---- */
+.tl-clear { width: 100%; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 14px;
+  background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
+  font-family: system-ui, sans-serif; cursor: pointer; margin-bottom: 8px; }
+.tl-pinned-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ch-muted);
+  margin: 12px 0 2px; }
+.tl-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.tl-pinned { max-height: none; }
+#ts-list.tl-list { max-height: 40vh; }
+.tl-item { border-top: 1px solid var(--ch-border); }
+.tl-item:first-child { border-top: 0; }
+.tl-row { width: 100%; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline;
+  background: transparent; color: var(--ch-text); border: 0; text-align: left; padding: 10px 4px;
+  font: inherit; cursor: pointer; }
+.tl-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-rssi { color: var(--ch-accent); font-variant-numeric: tabular-nums; }
+.tl-time { color: var(--ch-muted); font-variant-numeric: tabular-nums; }
