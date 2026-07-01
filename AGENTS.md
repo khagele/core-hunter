@@ -293,8 +293,12 @@ Currently deferred (firmware-gated):
 - `sender_role` — advert role byte decode is deferred until the byte layout is confirmed. It is
   plumbed end-to-end through capture, MQTT payload, and the ingestor schema, but always `null`.
   It will never contain a guessed value.
-- Companion spreading-factor readback — needed for SF-ordered resolver selection (iteration 2);
-  deferred until the companion-info API exposes it reliably.
+
+Resolved (firmware-confirmed):
+- Companion spreading-factor readback — `PACKET_SELF_INFO` (0x05) byte 56 is the LoRa spreading
+  factor, per the upstream MeshCore firmware's own `docs/companion_protocol.md` and the
+  `out_frame` construction in `examples/companion_radio/MyMesh.cpp` (`CMD_APP_START` handler).
+  No longer gated; used for SF-ordered resolver selection (see §8).
 
 ### Colours via CSS variables only
 
@@ -373,8 +377,9 @@ the full picture. Key changes under review or decided for iteration 2:
   (no purge). Ignore is a display/query filter, not a capture filter. Matching is on the full
   pubkey (always available at zero-hop). Backend ignore-list is global across all hunters.
 - **Multiple regional name resolvers.** `config.json` accepts a `resolvers` array, each entry
-  with a `label`, `sf`, and `url`. Resolvers are tried in config order (SF-ordered selection is
-  firmware-gated / deferred pending companion SF readback); the first unambiguous hit wins.
+  with a `label`, `sf`, and `url`. Resolvers matching the companion's spreading factor (read from
+  `PACKET_SELF_INFO`, see §7) are tried first, config order otherwise; the first unambiguous hit
+  wins.
   The legacy single `resolveUrl` field remains supported.
 
 Iteration 1 code that will change in iteration 2 (after proposals are ratified):

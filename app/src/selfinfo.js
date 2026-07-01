@@ -57,7 +57,10 @@ export function setPathHashMode(transport, mode) {
 
 // parseSelfInfo: pubkey at bytes 4-35 (32 bytes), radio params at a fixed offset
 // before the variable-length name — [56] is the spreading factor — and the device
-// name at bytes 58+. The SF is plumbed for the SF-ordered name resolver.
+// name at bytes 58+. Layout confirmed against upstream MeshCore firmware's own
+// docs/companion_protocol.md ("Byte 56: Radio Spreading Factor") and the
+// out_frame construction in examples/companion_radio/MyMesh.cpp (CMD_APP_START
+// handler). SF is plumbed for the SF-ordered name resolver.
 export function parseSelfInfo(b) {
   if (b.length < 36) return null;
   const pubkey = bytesToHex(b.slice(4, 36));
