@@ -280,7 +280,10 @@ async function connectAll() {
       if (state.map) state.map.setPosition(fix.lat, fix.lon)
     })
 
-    // 4. MQTT publisher
+    // 4. MQTT publisher — non-fatal. Receptions are written to IndexedDB first
+    // and the drain loop publishes them, so a slow or unreachable broker must not
+    // fail the connect or tear down BLE. Connect in the background; the render
+    // tick keeps dot-mqtt in sync with the live publisher state.
     const cfg = getConfig()
     if (cfg && cfg.mqttUrl) {
       state.publisher = new Publisher({
@@ -289,8 +292,9 @@ async function connectAll() {
         password: cfg.mqttPassword,
         clientId: state.rxPubkey,
       })
-      await state.publisher.connect()
-      setDot('dot-mqtt', true)
+      state.publisher.connect()
+        .then(() => setDot('dot-mqtt', true))
+        .catch((e) => console.error('[mqtt]', e))
     }
 
     // 5. Register frame handler
