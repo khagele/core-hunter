@@ -112,6 +112,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-family: system-ui, sans-serif; cursor: pointer; }
 .ss-disconnect:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
   opacity: 0.45; }
+.ss-radio-section { margin-top: 16px; }
+.ss-radio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
+.ss-radio-row select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
+  background: transparent; color: var(--ch-text); font-size: 14px; }
 .ss-manfix-section { margin-top: 16px; }
 .ss-manfix-inputs { display: flex; gap: 12px; margin-top: 8px; }
 .ss-manfix-label { display: flex; flex-direction: column; font-size: 13px; color: var(--ch-muted); gap: 4px; }
