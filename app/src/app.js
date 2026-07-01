@@ -721,8 +721,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   drainLoop()
 })
 
-// Register the service worker so the app is installable (and falls back to the
-// cache when offline). Registration is non-fatal — the app works without it.
+// Register the service worker so the app is installable. It is network-only
+// (no caching — offline resilience lives in IndexedDB, see sw.js). Registration
+// is non-fatal — the app works without it.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((e) => console.error('[sw]', e))
