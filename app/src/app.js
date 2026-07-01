@@ -992,6 +992,28 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  // Tap outside an open sheet (on the map/backdrop) closes it — standard
+  // bottom-sheet behaviour. Skips clicks on the sheet itself or on the button
+  // that opens it (that click's own handler already ran and set hidden=false
+  // by the time this bubbles to document, so excluding the toggle here stops
+  // it from immediately re-closing what it just opened).
+  const dismissableSheets = [
+    { sheet: el('filter-sheet'), toggle: el('filter-btn') },
+    { sheet: el('settings-sheet'), toggle: el('settings-btn') },
+    { sheet: el('target-sheet'), toggle: el('target-chip') },
+  ]
+  document.addEventListener('click', (e) => {
+    // A click can detach its own target mid-dispatch (the ignore-list Remove
+    // button rebuilds the list via innerHTML) — a detached target fails every
+    // contains() check and would wrongly close the sheet it was inside.
+    if (!document.contains(e.target)) return
+    for (const { sheet, toggle } of dismissableSheets) {
+      if (sheet.hidden) continue
+      if (sheet.contains(e.target) || toggle.contains(e.target)) continue
+      sheet.hidden = true
+    }
+  })
+
   // Retry location — re-starts the GPS watch (e.g. after the user grants the
   // permission the browser prompted for, or re-enables location services).
   el('splash-retry-gps').addEventListener('click', () => {
