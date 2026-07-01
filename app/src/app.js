@@ -754,8 +754,33 @@ function buildSettingsSheet() {
 const LAYER_MODES = ['both', 'points', 'hex']
 let layerIdx = 0
 
+// One glyph per LAYER_MODES entry so the FAB reflects the active mode instead
+// of always showing the "both" icon.
+const LAYER_ICONS = {
+  both: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="10,2 18,6 10,10 2,6"/>
+    <polyline points="2,10 10,14 18,10"/>
+    <polyline points="2,14 10,18 18,14"/>
+  </svg>`,
+  points: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+    <circle cx="10" cy="5" r="1.8" fill="currentColor" stroke="none"/>
+    <circle cx="5" cy="14" r="1.8" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="14" r="1.8" fill="currentColor" stroke="none"/>
+  </svg>`,
+  hex: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="10,2 17,6 17,14 10,18 3,14 3,6"/>
+  </svg>`,
+}
+
+function updateLayerIcon() {
+  const mode = LAYER_MODES[layerIdx]
+  el('layer-toggle').innerHTML = LAYER_ICONS[mode]
+  el('layer-toggle').setAttribute('aria-label', `Toggle layers (${mode})`)
+}
+
 function cycleLayer() {
   layerIdx = (layerIdx + 1) % LAYER_MODES.length
+  updateLayerIcon()
   if (state.map) state.map.setLayerMode(LAYER_MODES[layerIdx])
 }
 
@@ -836,6 +861,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   el('discover-btn').addEventListener('click', sendDiscover)
 
+  updateLayerIcon()
   el('layer-toggle').addEventListener('click', cycleLayer)
 
   // Recenter button — re-enables follow mode and snaps back to my position.
