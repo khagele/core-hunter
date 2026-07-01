@@ -17,7 +17,7 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
   updateGlyph()
   handle.addEventListener('click', () => { root.classList.toggle('collapsed'); updateGlyph() })
 
-  function row(rec, nowMs) {
+  function row(rec, nowMs, isolatedId) {
     const li = document.createElement('li')
     li.className = 'feed-item'
 
@@ -34,7 +34,9 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     body.addEventListener('click', () => onTapRow && onTapRow(rec))
 
     const iso = document.createElement('button'); iso.type = 'button'; iso.className = 'feed-iso'; iso.textContent = '⊙'
-    iso.title = 'Isolate sender'; iso.addEventListener('click', () => onIsolate && onIsolate(rec.sender_id))
+    iso.title = 'Isolate sender'
+    iso.classList.toggle('active', isolatedId != null && rec.sender_id === isolatedId)
+    iso.addEventListener('click', () => onIsolate && onIsolate(rec.sender_id))
     const ign = document.createElement('button'); ign.type = 'button'; ign.className = 'feed-ign'; ign.textContent = '⊘'
     ign.title = 'Ignore this ID'; ign.addEventListener('click', () => onIgnore && onIgnore(rec.sender_id))
 
@@ -42,14 +44,16 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     return li
   }
 
-  function render(items, nowMs) {
+  function render(items, nowMs, isolatedId) {
     countEl.textContent = '(' + items.length + ')'
     // Key on the displayed label too, so a name resolved after the row first
     // appeared (async CoreScope lookup) repaints instead of being suppressed.
-    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rx_at).join('|')
+    // Also key on isolatedId so toggling isolate re-renders the active dot
+    // even when the item list itself hasn't changed.
+    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rx_at).join('|') + '#' + (isolatedId || '')
     if (sig === _lastSig) return
     _lastSig = sig
-    list.replaceChildren(...items.map((rec) => row(rec, nowMs)))
+    list.replaceChildren(...items.map((rec) => row(rec, nowMs, isolatedId)))
   }
 
   return { render, toggle: () => root.classList.toggle('collapsed') }
