@@ -36,8 +36,11 @@ describe('isFilterActive', () => {
   it('an isolated sender is active', () => {
     expect(isFilterActive({ ...DEFAULT_FILTER, sender: { key: 'aa', keylen: 1 } })).toBe(true)
   })
-  it('turning direct-only off is active', () => {
-    expect(isFilterActive({ ...DEFAULT_FILTER, directOnly: false })).toBe(true)
+  it('the default filter has direct-only off', () => {
+    expect(DEFAULT_FILTER.directOnly).toBe(false)
+  })
+  it('turning direct-only on is active', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, directOnly: true })).toBe(true)
   })
   it('a non-default time window is active (including all-time)', () => {
     expect(isFilterActive({ ...DEFAULT_FILTER, windowMs: 3600000 })).toBe(true)
