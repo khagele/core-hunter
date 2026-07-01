@@ -26,7 +26,7 @@ export function createHuntMap(containerId) {
   applyBasemap()
   const pointLayer = L.layerGroup().addTo(map)
   const hexLayer = L.layerGroup().addTo(map)
-  let mode = 'both', here = null
+  let mode = 'both', here = null, lastIsolatedId = null
 
   let popupOpen = false
   map.on('popupopen', () => { popupOpen = true })
@@ -67,8 +67,9 @@ export function createHuntMap(containerId) {
   map.on('zoomstart', () => { zooming = true })
   map.on('zoomend', () => { zooming = false; draw() })
 
-  function render(records) {
+  function render(records, isolatedId) {
     lastRecords = records
+    lastIsolatedId = isolatedId ?? null
     draw()
   }
 
@@ -81,7 +82,7 @@ export function createHuntMap(containerId) {
       for (const r of records) {
         if (r.lat == null || r.lon == null) continue
         const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
-        m.bindPopup(popupHtml(r))
+        m.bindPopup(popupHtml(r, lastIsolatedId))
         m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
         m.addTo(pointLayer)
       }
@@ -131,7 +132,7 @@ export function createHuntMap(containerId) {
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)
-    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec)).openOn(map)
+    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec, lastIsolatedId)).openOn(map)
     wireIsolate(popup, rec)
     wireIgnore(popup, rec)
   }
@@ -139,7 +140,7 @@ export function createHuntMap(containerId) {
   return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
 }
 
-function popupHtml(r) {
+function popupHtml(r, isolatedId) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   const kindLabel = { channel_name: 'name', advert_pubkey: 'node', discover_pubkey: 'node', relay: 'relay' }[r.sender_kind] || 'src'
   const senderLine = r.sender_id
@@ -147,16 +148,29 @@ function popupHtml(r) {
     : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
+  const isolated = r.sender_id && r.sender_id === isolatedId
+  const isolateBtn = isolated
+    ? `<button class="ch-isolate active" disabled>Isolated ✓</button>`
+    : `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
   return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
     + `${esc(r.packet_type)}<br>`
     + senderLine + chanLine + textLine + '<br>'
-    + `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
+    + isolateBtn
     + ` <button class="ch-ignore" ${r.sender_id ? '' : 'disabled'}>Ignore this ID</button></div>`
 }
 function wireIsolate(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-isolate')
-  if (btn && r.sender_id) btn.onclick = () => document.dispatchEvent(
-    new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id } }))
+  if (!btn || !r.sender_id || btn.disabled) return
+  // Optimistic feedback: the next render tick will confirm this via
+  // popupHtml's isolatedId check, but that tick is 1s away and the popup
+  // doesn't rebuild while open (see draw()'s popupOpen guard) — without this,
+  // clicking gives no visible response until the popup is closed and reopened.
+  btn.onclick = () => {
+    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id } }))
+    btn.textContent = 'Isolated ✓'
+    btn.disabled = true
+    btn.classList.add('active')
+  }
 }
 function wireIgnore(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-ignore')
