@@ -473,6 +473,19 @@ function refreshConnState() {
   el('ss-conn-mqtt').textContent = state.mqttPaused
     ? 'Paused'
     : (state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected')
+
+  const mqttBtn = el('ss-mqtt-pause-btn')
+  if (mqttBtn) {
+    if (state.mqttPaused) {
+      mqttBtn.textContent = 'Resume MQTT'
+      mqttBtn.classList.remove('ss-disconnect')
+      mqttBtn.classList.add('ss-connect')
+    } else {
+      mqttBtn.textContent = 'Pause MQTT'
+      mqttBtn.classList.remove('ss-connect')
+      mqttBtn.classList.add('ss-disconnect')
+    }
+  }
 }
 
 async function disconnectAll(silent) {
@@ -696,10 +709,7 @@ function buildSettingsSheet() {
           <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
         </dl>
         <button id="ss-conn-btn" class="ss-connect">Connect</button>
-        <label class="fs-row" id="ss-row-mqtt-pause">
-          <span>Pause MQTT</span>
-          <input type="checkbox" id="ss-mqtt-pause" />
-        </label>
+        <button id="ss-mqtt-pause-btn" class="ss-disconnect">Pause MQTT</button>
       </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
@@ -750,12 +760,8 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
-  const mqttPause = el('ss-mqtt-pause')
-  mqttPause.checked = state.mqttPaused
-  el('ss-row-mqtt-pause').classList.toggle('active', state.mqttPaused)
-  mqttPause.addEventListener('change', () => {
-    state.mqttPaused = mqttPause.checked
-    el('ss-row-mqtt-pause').classList.toggle('active', state.mqttPaused)
+  el('ss-mqtt-pause-btn').addEventListener('click', () => {
+    state.mqttPaused = !state.mqttPaused
     if (state.mqttPaused) {
       if (state.publisher) { state.publisher.end(); state.publisher = null }
       setDot('dot-mqtt', false)
