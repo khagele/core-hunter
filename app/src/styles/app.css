@@ -1,6 +1,10 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-text);
-  font-family: system-ui, sans-serif; }
+  font-family: system-ui, sans-serif;
+  /* Prevent Android's pull-to-refresh reload — it would silently kill the
+     active BLE/MQTT connection when triggered by an accidental downward
+     drag on the map or a panel. */
+  overscroll-behavior-y: contain; }
 #map { position: fixed; inset: 0; }
 
 /* ---- Topbar ---- */
