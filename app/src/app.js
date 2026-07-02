@@ -52,25 +52,6 @@ function saveIgnore(set) {
   } catch (_) {}
 }
 
-// Load / save manual position override (dev only). Key: 'core-hunter-manual-fix'.
-// Value: JSON { lat, lon, acc_m } or null.
-function loadManualFix() {
-  try {
-    const raw = localStorage.getItem('core-hunter-manual-fix')
-    if (raw) return JSON.parse(raw)
-  } catch (_) {}
-  return null
-}
-
-function saveManualFix(fix) {
-  try {
-    if (fix == null) localStorage.removeItem('core-hunter-manual-fix')
-    else localStorage.setItem('core-hunter-manual-fix', JSON.stringify(fix))
-  } catch (_) {}
-}
-
-const initialManualFix = loadManualFix()
-
 // Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to
 // plotted RSSI so the picture stays consistent when an external attenuator is on.
 function loadAttenuator() {
@@ -101,15 +82,13 @@ const state = {
   // On app restart the Set is empty, so rows are republished; that is fine.
   published: new Set(),
   ignore: loadIgnore(),
-  manualFix: initialManualFix,
   attenuatorDb: loadAttenuator(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
   filter: { ...DEFAULT_FILTER },
-  // Startup splash (see splash.js) — hides once hasFix flips true. A manual
-  // fix override (dev only) counts as having a fix already.
-  hasFix: !!initialManualFix,
+  // Startup splash (see splash.js) — hides once the first GPS fix lands.
+  hasFix: false,
   bleError: false,
   gpsError: false,
 }
@@ -168,8 +147,7 @@ function refreshFilterIndicator() {
 }
 
 // Light the settings button's badge when a setting differs from default
-// (attenuator non-zero, or manual position override set). Call wherever
-// state.attenuatorDb or state.manualFix changes.
+// (attenuator non-zero). Call wherever state.attenuatorDb changes.
 function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
@@ -281,7 +259,7 @@ async function processFrame(dv) {
   const cls = classifyReception(decoded, channelNameFor)
   if (!shouldCapture(cls)) return
 
-  const fix = state.manualFix || state.gps.latest()
+  const fix = state.gps.latest()
   if (!fix) return
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString())
@@ -678,14 +656,6 @@ function renderIgnoreList(listEl) {
   }
 }
 
-function updateManualFixStatus(statusEl) {
-  const f = state.manualFix
-  statusEl.textContent = f
-    ? `Manual position: ${f.lat}, ${f.lon} — overriding GPS`
-    : 'off'
-  statusEl.classList.toggle('ss-manfix-active', !!f)
-}
-
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
@@ -725,25 +695,6 @@ function buildSettingsSheet() {
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
-      <div class="ss-manfix-section">
-        <h3>Manual position (dev)</h3>
-        <div class="ss-manfix-inputs">
-          <label class="ss-manfix-label">
-            Lat
-            <input type="number" id="ss-manfix-lat" step="any" placeholder="51.05" />
-          </label>
-          <label class="ss-manfix-label">
-            Lon
-            <input type="number" id="ss-manfix-lon" step="any" placeholder="3.72" />
-          </label>
-        </div>
-        <div class="ss-manfix-error" id="ss-manfix-error" hidden></div>
-        <div class="ss-manfix-actions">
-          <button id="ss-manfix-set">Set</button>
-          <button id="ss-manfix-clear">Clear</button>
-        </div>
-        <p id="ss-manfix-status" class="ss-manfix-status"></p>
-      </div>
       <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
     </div>`
 
@@ -775,45 +726,6 @@ function buildSettingsSheet() {
     if (state.map) state.map.applyBasemap()
   })
 
-
-  // Manual position — prefill inputs from persisted state
-  const latInput = el('ss-manfix-lat')
-  const lonInput = el('ss-manfix-lon')
-  const statusEl = el('ss-manfix-status')
-  const errorEl = el('ss-manfix-error')
-
-  if (state.manualFix) {
-    latInput.value = state.manualFix.lat
-    lonInput.value = state.manualFix.lon
-  }
-  updateManualFixStatus(statusEl)
-
-  el('ss-manfix-set').addEventListener('click', () => {
-    errorEl.hidden = true
-    const lat = parseFloat(latInput.value)
-    const lon = parseFloat(lonInput.value)
-    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      errorEl.textContent = 'Invalid coordinates. Lat −90..90, Lon −180..180.'
-      errorEl.hidden = false
-      return
-    }
-    state.manualFix = { lat, lon, acc_m: 10 }
-    saveManualFix(state.manualFix)
-    updateManualFixStatus(statusEl)
-    refreshSettingsIndicator()
-    if (state.map) {
-      state.map.setPosition(lat, lon)
-      state.map.centerOn(lat, lon)
-    }
-  })
-
-  el('ss-manfix-clear').addEventListener('click', () => {
-    errorEl.hidden = true
-    state.manualFix = null
-    saveManualFix(null)
-    updateManualFixStatus(statusEl)
-    refreshSettingsIndicator()
-  })
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
 }
@@ -995,7 +907,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
-      updateManualFixStatus(el('ss-manfix-status'))
       refreshConnState()
     }
   })
