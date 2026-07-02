@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade } from '../signal.js'
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
@@ -46,5 +46,27 @@ describe('effectivePlotOffset — calibration + attenuator added back', () => {
     expect(effectivePlotOffset(0, 0)).toBe(0)
     expect(effectivePlotOffset()).toBe(0)
     expect(effectivePlotOffset(8)).toBe(8)
+  })
+})
+
+describe('ageFade — point opacity multiplier by age within the time window', () => {
+  const now = Date.parse('2026-06-29T10:10:00Z')
+  const WINDOW = 600000 // 10 min
+
+  it('is 1 for a brand-new reception', () => {
+    expect(ageFade('2026-06-29T10:10:00Z', now, WINDOW)).toBe(1)
+  })
+  it('fades linearly to the 0.15 floor at the window edge', () => {
+    expect(ageFade('2026-06-29T10:05:00Z', now, WINDOW)).toBeCloseTo(0.575) // half-window
+    expect(ageFade('2026-06-29T10:00:00Z', now, WINDOW)).toBeCloseTo(0.15) // full window
+  })
+  it('clamps: never below the floor, never above 1', () => {
+    expect(ageFade('2026-06-29T09:00:00Z', now, WINDOW)).toBeCloseTo(0.15) // way past the window
+    expect(ageFade('2026-06-29T10:11:00Z', now, WINDOW)).toBe(1)           // clock skew: rx_at in the future
+  })
+  it('is 1 when no time window is active or rx_at is unusable', () => {
+    expect(ageFade('2026-06-29T10:00:00Z', now, null)).toBe(1)
+    expect(ageFade(null, now, WINDOW)).toBe(1)
+    expect(ageFade('not-a-date', now, WINDOW)).toBe(1)
   })
 })

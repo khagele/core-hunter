@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade } from './signal.js'
 import { getConfig } from './config.js'
 import { locate } from './locate.js'
 
@@ -44,12 +44,13 @@ function heatmapOverlay(hm) {
 }
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, destroy() {} }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
   // runtime (settings), so the offset is computed per render, not captured once.
   let attenuatorDb = 0
+  let timeWindowMs = null
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
   // rotate/touchRotate come from the leaflet-rotate plugin (#116): real map
   // rotation on device heading plus a two-finger rotate gesture. Without the
@@ -92,15 +93,19 @@ export function createHuntMap(containerId) {
     if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) }
   })
 
-  function pointStyle(rec) {
+  function pointStyle(rec, nowMs) {
     const tier = rssiTier(rec.rssi, currentOffset())
     const color = cssVar(tierColorVar(tier))
+    // Fade with age within the active time window (#149) — applied to stroke
+    // and fill so a nearly-expired point is nearly transparent, not outlined.
+    const fade = ageFade(rec.rx_at, nowMs, timeWindowMs)
     return {
       radius: 8,
       color,
       weight: 1,
+      opacity: fade,
       fillColor: color,
-      fillOpacity: fillOpacity(tier),
+      fillOpacity: fillOpacity(tier) * fade,
     }
   }
 
@@ -186,9 +191,10 @@ export function createHuntMap(containerId) {
       }
     }
     if (mode !== 'hex') {
+      const nowMs = Date.now()
       for (const r of records) {
         if (r.lat == null || r.lon == null) continue
-        const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
+        const m = L.circleMarker([r.lat, r.lon], pointStyle(r, nowMs))
         m.bindPopup(popupHtml(r, lastIsolatedId))
         m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
         m.addTo(pointLayer)
@@ -233,6 +239,10 @@ export function createHuntMap(containerId) {
   // setAttenuator updates the runtime attenuator (dB) used in the plot offset.
   // The next render tick repaints with the new tiers.
   function setAttenuator(db) { attenuatorDb = Number(db) || 0 }
+  // setTimeWindow mirrors the filter's active time window (ms, or null for no
+  // window) so pointStyle can fade points by age within it. The 1s render tick
+  // keeps the fade progressing.
+  function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)
@@ -241,7 +251,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, destroy }
 }
 
 function popupHtml(r, isolatedId) {
