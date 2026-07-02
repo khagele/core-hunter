@@ -176,11 +176,33 @@ function refreshSettingsIndicator() {
 
 // Locate info readout — driven by huntmap.js's onLocate callback, fired every
 // render tick with the single-hunter locate() result for the isolated sender
-// (or null when nothing is isolated).
+// (or null when nothing is isolated). Auto-fades 2s after first becoming
+// visible for this isolation and stays hidden until re-triggered (see
+// resetLocateFade(), called from the isolate-sender handler below) — it's a
+// glance, not a permanent overlay blocking the map.
+const LOCATE_FADE_MS = 2000
+let locateFadeTimer = null
+let locateAllowShow = false
+function resetLocateFade() {
+  locateAllowShow = true
+  if (locateFadeTimer) { clearTimeout(locateFadeTimer); locateFadeTimer = null }
+}
 function updateLocateInfo(res) {
   const box = el('locate-info')
-  if (!res) { box.hidden = true; return }
+  if (!res) {
+    box.hidden = true
+    if (locateFadeTimer) { clearTimeout(locateFadeTimer); locateFadeTimer = null }
+    return
+  }
+  if (!locateAllowShow) return // already auto-faded this isolation — stays hidden
   box.hidden = false
+  if (!locateFadeTimer) {
+    locateFadeTimer = setTimeout(() => {
+      box.hidden = true
+      locateAllowShow = false
+      locateFadeTimer = null
+    }, LOCATE_FADE_MS)
+  }
   // AGENTS.md §7: any output implying a target's location must state it is
   // inferred from radio measurements, not GPS-tracked. Reuse the splash wording.
   const disclaimer = `<div class="lc-muted lc-disclaimer">${SPLASH_DISCLAIMER}</div>`
@@ -870,6 +892,7 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   if (e.detail && e.detail.id) {
     chip.textContent = '⌖ ' + String(e.detail.id).slice(0, 12)
     chip.classList.add('active')
+    resetLocateFade()
   } else {
     chip.textContent = 'No target'
     chip.classList.remove('active')
