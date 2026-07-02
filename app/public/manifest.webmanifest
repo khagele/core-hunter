@@ -3,6 +3,7 @@
   "short_name": "Hunter",
   "description": "MeshCore node-hunting / direction-finding scanner",
   "start_url": "/", "scope": "/", "display": "standalone", "orientation": "portrait",
+  "launch_handler": { "client_mode": "focus-existing" },
   "background_color": "#0b0e14", "theme_color": "#0b0e14",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "purpose": "any" },
