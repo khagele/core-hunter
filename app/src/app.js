@@ -243,8 +243,10 @@ function stopTipRotation() {
 function refreshSplash() {
   const s = splashState(state)
   el('splash').hidden = s === 'hidden'
-  // Tips + disclaimer only during the actual GPS wait; stop the timer otherwise.
-  const showTips = s === 'waiting-gps'
+  // Tips + disclaimer on every visible splash screen (intro, waiting-gps,
+  // ble-error, gps-error) — previously waiting-gps only, so the position
+  // disclaimer and hunting tips went unseen if the user never got that far.
+  const showTips = s !== 'hidden'
   el('splash-disclaimer').hidden = !showTips
   el('splash-tip').hidden = !showTips
   if (showTips) startTipRotation()
