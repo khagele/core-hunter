@@ -4,14 +4,15 @@ import { feedItems, relTime, senderList, topSenders } from '../feed.js'
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
 describe('feedItems', () => {
-  it('keeps only channel_name + advert_pubkey kinds', () => {
+  it('keeps only channel_name + advert_pubkey + discover_pubkey kinds', () => {
     const out = feedItems([
       rec({ sender_kind: 'channel_name', sender_id: 'A' }),
       rec({ sender_kind: 'advert_pubkey', sender_id: 'B' }),
-      rec({ sender_kind: 'direct_hash', sender_id: 'C' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'C' }),
+      rec({ sender_kind: 'direct_hash', sender_id: 'D' }),
       rec({ sender_kind: null, sender_id: null }),
     ], {})
-    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B'])
+    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B', 'C'])
   })
   it('drops ignored sender ids (case-insensitive)', () => {
     const out = feedItems([rec({ sender_id: 'AA' }), rec({ sender_id: 'bb' })], { ignore: new Set(['aa']) })
@@ -28,15 +29,16 @@ describe('feedItems', () => {
 })
 
 describe('senderList', () => {
-  it('keeps channel_name + advert_pubkey + relay kinds, drops the rest', () => {
+  it('keeps channel_name + advert_pubkey + discover_pubkey + relay kinds, drops the rest', () => {
     const out = senderList([
       rec({ sender_kind: 'channel_name', sender_id: 'A' }),
       rec({ sender_kind: 'advert_pubkey', sender_id: 'B' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'BB' }),
       rec({ sender_kind: 'relay', sender_id: 'C' }),
       rec({ sender_kind: 'direct_hash', sender_id: 'D' }),
       rec({ sender_kind: null, sender_id: null }),
     ], {})
-    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B', 'C'])
+    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B', 'BB', 'C'])
   })
   it('includes a last-hop repeater (relay-kind) as a selectable target', () => {
     const out = senderList([rec({ sender_kind: 'relay', sender_id: 'abcd' })], {})
