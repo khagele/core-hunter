@@ -27,7 +27,8 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     const label = document.createElement('span'); label.className = 'feed-label'
     label.textContent = rec.sender_label || rec.sender_id || '—'
     const mid = document.createElement('span'); mid.className = 'feed-mid'
-    mid.textContent = rec.sender_kind === 'channel_name' ? (rec._text || '') : 'advert'
+    mid.textContent = rec.sender_kind === 'channel_name' ? (rec._text || '')
+      : rec.sender_kind === 'discover_pubkey' ? 'discover' : 'advert'
     const time = document.createElement('span'); time.className = 'feed-time'
     time.textContent = relTime(rec.rx_at, nowMs)
     body.append(rssi, label, mid, time)

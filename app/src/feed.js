@@ -1,4 +1,6 @@
-const FEED_KINDS = new Set(['channel_name', 'advert_pubkey'])
+// discover_pubkey rows are DISCOVER_RESP replies — a directly-heard node
+// announcing itself, so they belong in the feed like adverts do (#129).
+const FEED_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey'])
 
 // TARGET_KINDS additionally allows 'relay' — a last-hop repeater attributed via
 // path[last] of a relayed FLOOD packet (see meshpacket.js classifyReception).
