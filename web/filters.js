@@ -1,5 +1,37 @@
 import { API_BASE } from './config.js'
-import { initial } from './urlstate.js'
+import { initial, save } from './urlstate.js'
+
+// Same packet-type set as the app's filter sheet (parity, #142).
+const FILTER_PACKET_TYPES = [
+  { value: 'Advert',      label: 'Advert' },
+  { value: 'GroupText',   label: 'Channel' },
+  { value: 'Response',    label: 'Response' },
+  { value: 'Request',     label: 'Request' },
+  { value: 'TextMessage', label: 'Direct msg' },
+  { value: 'Ack',         label: 'Ack' },
+  { value: 'Trace',       label: 'Trace' },
+]
+
+// Packet-type toggle chips: none active = all types (no filter).
+const typesHost = document.getElementById('f-types')
+for (const t of FILTER_PACKET_TYPES) {
+  const b = document.createElement('button')
+  b.type = 'button'; b.className = 'f-chip'; b.dataset.type = t.value; b.textContent = t.label
+  b.addEventListener('click', () => {
+    b.classList.toggle('active')
+    save()
+    if (window.__refresh) window.__refresh()
+  })
+  typesHost.appendChild(b)
+}
+
+// getters/setter used by currentFilters and the urlstate registration (map.js).
+window.currentTypes = () =>
+  [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).join(',')
+window.setTypes = (v) => {
+  const want = new Set(String(v || '').split(',').filter(Boolean))
+  for (const b of typesHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.type))
+}
 
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
 
@@ -26,6 +58,9 @@ window.currentFilters = () => ({
   sender: document.getElementById('f-sender').value.trim(),
   from: localToUTC(document.getElementById('f-from').value),
   to: localToUTC(document.getElementById('f-to').value),
+  types: window.currentTypes(),
+  // direct-only = zero-hop (#138 semantics); empty string drops the param
+  hops: document.getElementById('f-direct').checked ? '0' : '',
 })
 
 async function loadHunters() {
@@ -48,7 +83,7 @@ async function loadHunters() {
   } catch (_) {}
 }
 
-for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to']) {
+for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
   const el = document.getElementById(id)
   el.addEventListener('change', () => window.__refresh && window.__refresh())
   if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())

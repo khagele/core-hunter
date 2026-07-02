@@ -403,6 +403,8 @@ urlstate.bindControl('from', 'f-from')
 urlstate.bindControl('to', 'f-to')
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
+urlstate.bindControl('direct', 'f-direct', { checkbox: true })
+urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 const wantLocate = urlstate.initial('locate', '') === '1'
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
