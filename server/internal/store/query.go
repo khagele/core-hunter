@@ -10,8 +10,14 @@ type Filter struct {
 	HasBBox                        bool
 	From, To, Hunter, Sender       string
 	Ignore                         []string
-	Limit                          int
-	Offset                         int
+	// Hops filters on the exact hop count; nil = no hop filter. Direct-only
+	// (zero-hop) is Hops=0 — is_direct is not usable as a query condition, it
+	// is also true for relayed last-hop measurements (#138/#142).
+	Hops   *int
+	// Types filters on packet_type (same values the app uses); empty = all.
+	Types  []string
+	Limit  int
+	Offset int
 }
 
 type Point struct {
@@ -27,12 +33,23 @@ type Point struct {
 	HunterName   string   `json:"hunter_name"`
 	ChannelName  string   `json:"channel_name"`
 	PacketType   string   `json:"packet_type"`
+	Hops         int      `json:"hops"`
 	RxAt         string   `json:"rx_at"`
 }
 
 func (f Filter) where() (string, []any) {
-	conds := []string{"is_direct=1"}
+	conds := []string{"1=1"}
 	var args []any
+	if f.Hops != nil {
+		conds = append(conds, "hops = ?"); args = append(args, *f.Hops)
+	}
+	if len(f.Types) > 0 {
+		ph := make([]string, len(f.Types))
+		for i, t := range f.Types {
+			ph[i] = "?"; args = append(args, t)
+		}
+		conds = append(conds, "packet_type IN ("+strings.Join(ph, ",")+")")
+	}
 	if f.HasBBox {
 		conds = append(conds, "lat BETWEEN ? AND ?", "lon BETWEEN ? AND ?")
 		args = append(args, f.MinLat, f.MaxLat, f.MinLon, f.MaxLon)
@@ -68,15 +85,16 @@ func ignoreCond(conds []string, args []any, ignore []string) ([]string, []any) {
 	return append(conds, "(sender_id IS NULL OR lower(sender_id) NOT IN ("+strings.Join(ph, ",")+"))"), args
 }
 
-// QueryPoints returns zero-hop rows matching f, newest first, capped at f.Limit
+// QueryPoints returns rows matching f, newest first, capped at f.Limit
 // (default 5000), skipping f.Offset rows for paging. truncated is true when
-// more rows matched beyond the returned page.
+// more rows matched beyond the returned page. Direct-only is an explicit
+// f.Hops=0 filter, not an implicit condition.
 func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 	if f.Limit <= 0 { f.Limit = 5000 }
 	if f.Offset < 0 { f.Offset = 0 }
 	w, args := f.where()
 	args = append(args, f.Limit+1, f.Offset) // fetch one extra to detect truncation precisely
-	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,sender_role,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
+	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,sender_role,hunter_pubkey,hunter_name,channel_name,packet_type,hops,rx_at
 		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil { return nil, false, err }
 	defer rows.Close()
@@ -85,7 +103,7 @@ func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 		var rssi sql.NullInt64
 		var snr sql.NullFloat64
 		var sid, slabel, skind, srole, cn sql.NullString
-		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &srole, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.RxAt); err != nil {
+		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &srole, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.Hops, &p.RxAt); err != nil {
 			return nil, false, err
 		}
 		if rssi.Valid { v := int(rssi.Int64); p.RSSI = &v }
@@ -107,7 +125,7 @@ type Hunter struct {
 }
 
 func (s *Store) Hunters(from, to string, ignore []string) ([]Hunter, error) {
-	conds := []string{"is_direct=1"}
+	conds := []string{"1=1"}
 	var args []any
 	if from != "" { conds = append(conds, "rx_at >= ?"); args = append(args, from) }
 	if to != "" { conds = append(conds, "rx_at <= ?"); args = append(args, to) }

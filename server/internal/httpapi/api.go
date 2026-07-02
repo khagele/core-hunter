@@ -37,6 +37,14 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	}
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil { f.Limit = n }
 	if n, err := strconv.Atoi(q.Get("offset")); err == nil { f.Offset = n }
+	// ?hops=<n> filters on exact hop count (direct-only = hops=0, #142);
+	// ?types=a,b,c filters on packet_type (same values as the app's filter).
+	if n, err := strconv.Atoi(q.Get("hops")); err == nil { f.Hops = &n }
+	if ts := strings.TrimSpace(q.Get("types")); ts != "" {
+		for _, t := range strings.Split(ts, ",") {
+			if t = strings.TrimSpace(t); t != "" { f.Types = append(f.Types, t) }
+		}
+	}
 	return f
 }
 
