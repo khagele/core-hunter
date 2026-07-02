@@ -293,7 +293,10 @@ function enrichNames(rows) {
   }
 }
 
-async function renderTick() {
+// The actual redraw, split out from renderTick's timer-rescheduling so it can
+// also be called on demand (e.g. right after ignoring a sender) without
+// spawning a second parallel setTimeout chain alongside the running one.
+async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
     const rows = await state.queue.takeAll()
@@ -311,6 +314,10 @@ async function renderTick() {
   } catch (_) {
     // silent — render failure must not crash the loop
   }
+}
+
+async function renderTick() {
+  await drawOnce()
   setTimeout(renderTick, 1000)
 }
 
@@ -611,6 +618,7 @@ function buildFilterSheet() {
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
     refreshFilterIndicator()
+    drawOnce()
   })
 
   el('fs-close').addEventListener('click', () => { sheet.hidden = true })
@@ -675,6 +683,7 @@ function renderIgnoreList(listEl) {
       saveIgnore(state.ignore)
       renderIgnoreList(listEl)
       refreshFilterIndicator()
+      drawOnce()
     })
     row.appendChild(label)
     row.appendChild(rm)
@@ -867,7 +876,7 @@ document.addEventListener('hunt:ignore-sender', (e) => {
   state.ignore.add(String(e.detail.id).toLowerCase())
   saveIgnore(state.ignore)
   refreshFilterIndicator()
-  // next renderTick picks up the updated set automatically
+  drawOnce() // redraw now — don't wait up to 1s for the next render tick
 })
 
 // ---------------------------------------------------------------------------
