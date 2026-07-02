@@ -18,7 +18,10 @@ export function makeFilter(opts) {
   const { sender, types, windowMs, directOnly, ignore } = opts
   const wantId = sender && sender.id != null ? String(sender.id).toLowerCase() : null
   return (rec, nowMs) => {
-    if (directOnly && !rec.is_direct) return false
+    // direct = zero-hop from the original sender. rec.is_direct is unusable
+    // here: it is also true for relayed FLOOD packets (we hear the last relay
+    // directly), so every captured record has it set (#138).
+    if (directOnly && rec.hops !== 0) return false
     const id = rec.sender_id != null ? String(rec.sender_id).toLowerCase() : null
     if (wantId && id !== wantId) return false
     if (types && !types.has(rec.packet_type)) return false

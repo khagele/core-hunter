@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { makeFilter, isFilterActive, DEFAULT_FILTER } from '../filters.js'
 
-const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true,
+const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true, hops: 0,
   rx_at: '2026-06-29T10:00:00Z', ...o })
 const now = Date.parse('2026-06-29T10:05:00Z')
 
@@ -17,8 +17,13 @@ describe('makeFilter', () => {
     expect(f(rec(), now)).toBe(false)
     expect(f(rec({ sender_id: 'cc' }), now)).toBe(true)
   })
+  it('directOnly keeps only zero-hop receptions — is_direct is also true for relayed FLOOD (#138)', () => {
+    const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: true, ignore: null })
+    expect(f(rec({ is_direct: true, hops: 2 }), now)).toBe(false)
+    expect(f(rec({ is_direct: true, hops: 0 }), now)).toBe(true)
+  })
   it('directOnly drops relayed; window drops stale; types filter', () => {
-    expect(makeFilter({ sender: null, types: null, windowMs: null, directOnly: true, ignore: null })(rec({ is_direct: false }), now)).toBe(false)
+    expect(makeFilter({ sender: null, types: null, windowMs: null, directOnly: true, ignore: null })(rec({ is_direct: false, hops: 1 }), now)).toBe(false)
     expect(makeFilter({ sender: null, types: null, windowMs: 600000, directOnly: false, ignore: null })(rec({ rx_at: '2026-06-29T09:50:00Z' }), now)).toBe(false)
     expect(makeFilter({ sender: null, types: new Set(['Advert']), windowMs: null, directOnly: false, ignore: null })(rec({ packet_type: 'Response' }), now)).toBe(false)
   })
