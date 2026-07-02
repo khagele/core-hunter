@@ -310,7 +310,7 @@ async function drawOnce() {
       state.map.render(rows.filter((r) => fn(r, now)), state.filter.sender && state.filter.sender.id)
     }
     if (state.feed) {
-      state.feed.render(feedItems(rows, { ignore: state.ignore, limit: 50 }), now, state.filter.sender && state.filter.sender.id)
+      state.feed.render(feedItems(rows, { limit: 50 }), now, state.filter.sender && state.filter.sender.id, state.ignore)
     }
     if (state.targetList) state.targetList.render(rows, state.ignore, now, state.filter.sender && state.filter.sender.id)
   } catch (_) {
@@ -953,7 +953,9 @@ document.addEventListener('hunt:isolate-sender', (e) => {
 
 document.addEventListener('hunt:ignore-sender', (e) => {
   if (!e.detail || !e.detail.id) return
-  state.ignore.add(String(e.detail.id).toLowerCase())
+  const key = String(e.detail.id).toLowerCase()
+  if (state.ignore.has(key)) state.ignore.delete(key)
+  else state.ignore.add(key)
   saveIgnore(state.ignore)
   refreshFilterIndicator()
   drawOnce() // redraw now — don't wait up to 1s for the next render tick

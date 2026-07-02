@@ -17,7 +17,7 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
   updateGlyph()
   handle.addEventListener('click', () => { root.classList.toggle('collapsed'); updateGlyph() })
 
-  function row(rec, nowMs, isolatedId) {
+  function row(rec, nowMs, isolatedId, ignore) {
     const li = document.createElement('li')
     li.className = 'feed-item'
 
@@ -39,22 +39,26 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     iso.classList.toggle('active', isolatedId != null && rec.sender_id === isolatedId)
     iso.addEventListener('click', () => onIsolate && onIsolate(rec.sender_id))
     const ign = document.createElement('button'); ign.type = 'button'; ign.className = 'feed-ign'; ign.textContent = '⊘'
-    ign.title = 'Ignore this ID'; ign.addEventListener('click', () => onIgnore && onIgnore(rec.sender_id))
+    const ignored = ignore != null && rec.sender_id != null && ignore.has(String(rec.sender_id).toLowerCase())
+    ign.title = ignored ? 'Stop ignoring this ID' : 'Ignore this ID'
+    ign.classList.toggle('active', ignored)
+    ign.addEventListener('click', () => onIgnore && onIgnore(rec.sender_id))
 
     li.append(body, iso, ign)
     return li
   }
 
-  function render(items, nowMs, isolatedId) {
+  function render(items, nowMs, isolatedId, ignore) {
     countEl.textContent = '(' + items.length + ')'
     // Key on the displayed label too, so a name resolved after the row first
     // appeared (async CoreScope lookup) repaints instead of being suppressed.
-    // Also key on isolatedId so toggling isolate re-renders the active dot
-    // even when the item list itself hasn't changed.
-    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rx_at).join('|') + '#' + (isolatedId || '')
+    // Also key on isolatedId and the ignore-set so toggling isolate/ignore
+    // re-renders the active dots even when the item list itself hasn't changed.
+    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rx_at).join('|') +
+      '#' + (isolatedId || '') + '#' + (ignore ? [...ignore].sort().join(',') : '')
     if (sig === _lastSig) return
     _lastSig = sig
-    list.replaceChildren(...items.map((rec) => row(rec, nowMs, isolatedId)))
+    list.replaceChildren(...items.map((rec) => row(rec, nowMs, isolatedId, ignore)))
   }
 
   return { render, toggle: () => root.classList.toggle('collapsed') }

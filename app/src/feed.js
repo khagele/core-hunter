@@ -8,11 +8,11 @@ const FEED_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey'])
 // but it is a valid directly-heard node and belongs in the target dropdown.
 const TARGET_KINDS = new Set([...FEED_KINDS, 'relay'])
 
-export function feedItems(records, { ignore, limit = 50 } = {}) {
-  const ig = ignore || new Set()
+// Ignored senders stay in the feed (the ⊘ button renders their state and
+// toggles them back off); ignore filters only the map/heat layers.
+export function feedItems(records, { limit = 50 } = {}) {
   return (records || [])
     .filter((r) => FEED_KINDS.has(r.sender_kind))
-    .filter((r) => !(r.sender_id != null && ig.has(String(r.sender_id).toLowerCase())))
     .slice()
     .sort((a, b) => Date.parse(b.rx_at) - Date.parse(a.rx_at))
     .slice(0, limit)
