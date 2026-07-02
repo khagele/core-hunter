@@ -65,8 +65,11 @@ export function createHuntMap(containerId) {
     base = L.tileLayer(TILES[which] || TILES.dark, { maxZoom: 20 }).addTo(map)
   }
   applyBasemap()
-  const pointLayer = L.layerGroup().addTo(map)
+  // Layer add-order is z-order (later = on top) — hex first so individual
+  // points always render above it and stay clickable in 'both' mode, and
+  // locate's overlay/markers last so they sit on top of everything.
   const hexLayer = L.layerGroup().addTo(map)
+  const pointLayer = L.layerGroup().addTo(map)
   const locateLayer = L.layerGroup().addTo(map)
   let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null
 
@@ -155,15 +158,10 @@ export function createHuntMap(containerId) {
     const records = lastRecords
     pointLayer.clearLayers(); hexLayer.clearLayers()
     drawLocate(records)
-    if (mode !== 'hex') {
-      for (const r of records) {
-        if (r.lat == null || r.lon == null) continue
-        const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
-        m.bindPopup(popupHtml(r, lastIsolatedId))
-        m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
-        m.addTo(pointLayer)
-      }
-    }
+    // Hex first, points second — Leaflet's SVG renderer stacks paths in
+    // insertion order (last = topmost), so drawing hex before points keeps
+    // individual points clickable on top of the heatmap in 'both' mode
+    // instead of being covered by it.
     if (mode !== 'points') {
       const cells = new Map()
       const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
@@ -179,6 +177,15 @@ export function createHuntMap(containerId) {
         const tier = rssiTier(c.best, currentOffset())
         L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1,
           fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) }).addTo(hexLayer)
+      }
+    }
+    if (mode !== 'hex') {
+      for (const r of records) {
+        if (r.lat == null || r.lon == null) continue
+        const m = L.circleMarker([r.lat, r.lon], pointStyle(r))
+        m.bindPopup(popupHtml(r, lastIsolatedId))
+        m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
+        m.addTo(pointLayer)
       }
     }
   }
