@@ -45,7 +45,8 @@ function heatColor(v, stops) {
 }
 
 const MODES = ['points', 'hex', 'both']
-let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'points'
+// Cold default is hex (#141) — a URL-/persisted mode still wins via urlstate.
+let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
 const bar = document.getElementById('bar')
 document.getElementById('layer-toggle').textContent = mode
 const setMapTop = () => { document.getElementById('map').style.top = bar.offsetHeight + 'px'; map.invalidateSize() }
