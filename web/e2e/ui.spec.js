@@ -33,31 +33,30 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
 test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
   await page.goto('/')
   await page.click('#theme-toggle') // -> light
-  await page.click('#layer-toggle') // points -> hex
-  await expect(page.locator('#layer-toggle')).toHaveText('hex')
+  await page.click('#layer-toggle') // hex -> both
+  await expect(page.locator('#layer-toggle')).toHaveText('both')
 
   // Reload with a bare URL: the URL was rewritten by replaceState, so strip it to
   // prove the state is also restored from localStorage alone.
   await page.evaluate(() => history.replaceState(null, '', location.pathname))
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.locator('#layer-toggle')).toHaveText('hex')
+  await expect(page.locator('#layer-toggle')).toHaveText('both')
 })
 
-test('layer toggle cycles points → hex → both, and hex fetches /api/heatmap', async ({ page }) => {
+test('map starts in hex mode (#141), fetches /api/heatmap, and the toggle cycles hex → both → points', async ({ page }) => {
+  const heatmapReq = page.waitForRequest('**/api/heatmap*')
   await page.goto('/')
   const btn = page.locator('#layer-toggle')
-  await expect(btn).toHaveText('points')
-
-  const heatmapReq = page.waitForRequest('**/api/heatmap*')
-  await btn.click()
   await expect(btn).toHaveText('hex')
-  await heatmapReq // hex mode drew the heatmap layer
+  await heatmapReq // the cold default drew the heatmap layer
 
   await btn.click()
   await expect(btn).toHaveText('both')
   await btn.click()
   await expect(btn).toHaveText('points')
+  await btn.click()
+  await expect(btn).toHaveText('hex')
 })
 
 test('hunter dropdown is populated from /api/hunters', async ({ page }) => {
@@ -78,7 +77,7 @@ test('discover sender: prefix ID is resolved to a name via the API, popup shows 
 
   // the website must look up the 8-byte discover prefix (not just full pubkeys)
   const resolveReq = page.waitForRequest((r) => r.url().includes('/nodes/resolve') && r.url().includes('7b0e24700e0c0d3e'))
-  await page.goto('/')
+  await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
   await resolveReq
 
   // after resolution + redraw, the marker popup shows the resolved name and role.
@@ -100,7 +99,7 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
     }] },
   }))
   await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
-  await page.goto('/')
+  await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
 
   // Canvas-rendered point: click the map center where the fixture marker sits.
   await expect(async () => {
@@ -172,7 +171,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
 })
 
 test('sender filter reaches the /api/points query', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
   await page.fill('#f-sender', '4a')
   await req // only resolves if a points request carrying sender=4a was issued
