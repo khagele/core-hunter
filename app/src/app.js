@@ -547,11 +547,11 @@ function buildFilterSheet() {
           </svg>
         </button>
       </div>
-      <label class="fs-row">
+      <label class="fs-row" id="fs-row-direct">
         <span>Direct only</span>
         <input type="checkbox" id="fs-direct-only" />
       </label>
-      <label class="fs-row">
+      <label class="fs-row" id="fs-row-window">
         <span>Plot last:</span>
         <select id="fs-window">
           <option value="600000">10 min</option>
@@ -580,8 +580,15 @@ function buildFilterSheet() {
   chk.checked = state.filter.directOnly
   sel.value = String(state.filter.windowMs)
 
-  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; refreshFilterIndicator() })
-  sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null; refreshFilterIndicator() })
+  // Mark each row active when its own value differs from DEFAULT_FILTER,
+  // mirroring the existing .fs-chip.active / .ss-manfix-active pattern —
+  // the filter-button badge shows *something* differs, these show *what*.
+  const syncDirectRow = () => el('fs-row-direct').classList.toggle('active', chk.checked !== DEFAULT_FILTER.directOnly)
+  const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
+  syncDirectRow(); syncWindowRow()
+
+  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterIndicator() })
+  sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null; syncWindowRow(); refreshFilterIndicator() })
 
   // Type chips — the "All" chip (default) means no type filter. Picking a
   // specific type turns All off; clearing the last specific turns All back on.
@@ -717,7 +724,7 @@ function buildSettingsSheet() {
       </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
-        <label class="ss-radio-row">
+        <label class="ss-radio-row" id="ss-row-atten">
           <span>Attenuator</span>
           <select id="ss-atten">
             <option value="0">0 dB</option>
@@ -758,10 +765,13 @@ function buildSettingsSheet() {
 
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)
+  const syncAttenRow = () => el('ss-row-atten').classList.toggle('active', (Number(atten.value) || 0) !== 0)
+  syncAttenRow()
   atten.addEventListener('change', () => {
     state.attenuatorDb = Number(atten.value) || 0
     saveAttenuator(state.attenuatorDb)
     if (state.map) state.map.setAttenuator(state.attenuatorDb)
+    syncAttenRow()
     refreshSettingsIndicator()
   })
 
