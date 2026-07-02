@@ -44,14 +44,17 @@ function heatmapOverlay(hm) {
 }
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, stopFollow() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, destroy() {} }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
   // runtime (settings), so the offset is computed per render, not captured once.
   let attenuatorDb = 0
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
-  const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
+  // rotate/touchRotate come from the leaflet-rotate plugin (#116): real map
+  // rotation on device heading plus a two-finger rotate gesture. Without the
+  // plugin (CDN failure) the options are inert and the map stays north-up.
+  const map = L.map(containerId, { zoomControl: false, rotate: true, touchRotate: true, rotateControl: false }).setView([51, 4], 14)
   const TILES = {
     dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
@@ -88,12 +91,6 @@ export function createHuntMap(containerId) {
   map.on('dragstart', () => {
     if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) }
   })
-  // stopFollow mirrors the dragstart handler for the compass-button tap that
-  // stops following without an actual pan (pressing the button while it
-  // already shows the "following" glyph).
-  function stopFollow() {
-    if (follow) { follow = false; if (onFollow) onFollow(false) }
-  }
 
   function pointStyle(rec) {
     const tier = rssiTier(rec.rssi, currentOffset())
@@ -218,6 +215,20 @@ export function createHuntMap(containerId) {
   // onFollowChange registers a callback invoked with the follow flag whenever it
   // flips (false when the user pans away, true on recenter).
   function onFollowChange(cb) { onFollow = cb }
+  // setBearing rotates the map to the given bearing (degrees). No-op when the
+  // leaflet-rotate plugin didn't load, so the app degrades to north-up.
+  let settingBearing = false
+  function setBearing(deg) {
+    if (typeof map.setBearing !== 'function') return
+    settingBearing = true
+    try { map.setBearing(deg) } finally { settingBearing = false }
+  }
+  // onGestureRotate fires only for user-driven rotation (the two-finger
+  // gesture), not for our own setBearing calls — app.js uses it to drop out
+  // of heading-follow when the user takes over manually.
+  function onGestureRotate(cb) {
+    map.on('rotate', () => { if (!settingBearing) cb(typeof map.getBearing === 'function' ? map.getBearing() : 0) })
+  }
   function setLayerMode(m) { mode = m }
   // setAttenuator updates the runtime attenuator (dB) used in the plot offset.
   // The next render tick repaints with the new tiers.
@@ -230,7 +241,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, stopFollow, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, destroy }
 }
 
 function popupHtml(r, isolatedId) {

@@ -32,6 +32,7 @@ import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
+import { compassHeading, bearingForHeading, nextCompassState } from './rotation.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -824,11 +825,10 @@ function updateLayerIcon() {
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
-// While following, the map auto-centres on each GPS fix (north stays up —
-// Leaflet never rotates). Tapping the button or panning stops following; a
-// second tap recentres and resumes it. The icon shows the state you'll get
-// if you tap: re-center glyph while following (tap to go static), compass
-// glyph once static (tap to resume following).
+// Google-Maps-style cycle (#116): static → tap → follow (auto-centre, north
+// up) → tap → follow + heading rotation (map turns with the device) → tap →
+// follow north-up again. Panning drops back to static; a two-finger rotate
+// gesture takes over rotation manually and leaves heading mode.
 const COMPASS_ICONS = {
   following: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <circle cx="10" cy="10" r="4"/>
@@ -837,17 +837,56 @@ const COMPASS_ICONS = {
     <line x1="1" y1="10" x2="4" y2="10"/>
     <line x1="16" y1="10" x2="19" y2="10"/>
   </svg>`,
+  heading: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <polygon points="10,2 15,17 10,13.2 5,17" fill="currentColor" stroke="none"/>
+  </svg>`,
   static: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <circle cx="10" cy="10" r="8"/>
     <polygon points="10,4 12.2,10 10,16 7.8,10" fill="currentColor" stroke="none"/>
   </svg>`,
 }
+const COMPASS_LABELS = {
+  following: 'Rotate map with heading (compass mode)',
+  heading: 'Back to north-up',
+  static: 'Resume following (compass mode)',
+}
 
-let mapFollowing = true
-function updateCompassIcon(following) {
-  mapFollowing = following
-  el('recenter-btn').innerHTML = following ? COMPASS_ICONS.following : COMPASS_ICONS.static
-  el('recenter-btn').setAttribute('aria-label', following ? 'Stop following (compass mode)' : 'Resume following (compass mode)')
+let compassState = { follow: true, heading: false }
+function compassGlyph({ follow, heading }) {
+  return !follow ? 'static' : heading ? 'heading' : 'following'
+}
+function updateCompassIcon() {
+  const glyph = compassGlyph(compassState)
+  el('recenter-btn').innerHTML = COMPASS_ICONS[glyph]
+  el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[glyph])
+}
+
+// Device-heading rotation. iOS only hands out DeviceOrientation after an
+// explicit permission request from a user gesture, so enabling happens inside
+// the compass-button click handler. Android's compass-grade reading comes
+// from deviceorientationabsolute; iOS uses webkitCompassHeading (see
+// rotation.js).
+const ORIENTATION_EVENT = typeof window !== 'undefined' && 'ondeviceorientationabsolute' in window
+  ? 'deviceorientationabsolute' : 'deviceorientation'
+let orientationHandler = null
+async function enableHeadingRotation() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false
+    } catch { return false }
+  }
+  if (orientationHandler) return true
+  orientationHandler = (e) => {
+    const h = compassHeading(e)
+    if (h != null && state.map) state.map.setBearing(bearingForHeading(h))
+  }
+  window.addEventListener(ORIENTATION_EVENT, orientationHandler)
+  return true
+}
+function disableHeadingRotation() {
+  if (!orientationHandler) return
+  window.removeEventListener(ORIENTATION_EVENT, orientationHandler)
+  orientationHandler = null
 }
 
 function cycleLayer() {
@@ -938,15 +977,35 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateLayerIcon()
   el('layer-toggle').addEventListener('click', cycleLayer)
 
-  // Compass button — always visible; toggles between following (auto-centre,
-  // north up) and static (stay where panned). See updateCompassIcon() above.
-  updateCompassIcon(mapFollowing)
-  el('recenter-btn').addEventListener('click', () => {
+  // Compass button — always visible; cycles static → follow (north up) →
+  // follow + heading rotation. See the compass-mode section above.
+  updateCompassIcon()
+  el('recenter-btn').addEventListener('click', async () => {
     if (!state.map) return
-    if (mapFollowing) state.map.stopFollow()
-    else state.map.recenter()
+    const next = nextCompassState(compassState)
+    if (next.heading && !compassState.heading) {
+      // iOS permission prompt must run inside this click; denied → stay north-up
+      if (!(await enableHeadingRotation())) next.heading = false
+    }
+    if (!next.heading && compassState.heading) disableHeadingRotation()
+    if (!next.heading) state.map.setBearing(0)
+    compassState.heading = next.heading
+    if (next.follow && !compassState.follow) state.map.recenter() // fires onFollowChange → icon update
+    else updateCompassIcon()
   })
-  if (state.map) state.map.onFollowChange(updateCompassIcon)
+  if (state.map) state.map.onFollowChange((follow) => {
+    compassState.follow = follow
+    if (!follow && compassState.heading) { compassState.heading = false; disableHeadingRotation() }
+    updateCompassIcon()
+  })
+  // Manual two-finger rotation takes over from heading-follow (the map keeps
+  // the gestured bearing; the button returns it to north-up).
+  if (state.map) state.map.onGestureRotate(() => {
+    if (!compassState.heading) return
+    compassState.heading = false
+    disableHeadingRotation()
+    updateCompassIcon()
+  })
   if (state.map) state.map.onLocate(updateLocateInfo)
 
   // Locate overlay toggle — visible only while a sender is isolated (see the
