@@ -825,10 +825,12 @@ let layerIdx = 0
 // One glyph per LAYER_MODES entry so the FAB reflects the active mode instead
 // of always showing the "both" icon.
 const LAYER_ICONS = {
+  // Hexagon (the hex-heatmap glyph) with a point dot inside — visually
+  // combines the other two modes' glyphs instead of reusing a generic
+  // stacked-layers icon that doesn't read as "points + hex together".
   both: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-    <polygon points="10,2 18,6 10,10 2,6"/>
-    <polyline points="2,10 10,14 18,10"/>
-    <polyline points="2,14 10,18 18,14"/>
+    <polygon points="10,2 17,6 17,14 10,18 3,14 3,6"/>
+    <circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none"/>
   </svg>`,
   points: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
     <circle cx="10" cy="5" r="1.8" fill="currentColor" stroke="none"/>
