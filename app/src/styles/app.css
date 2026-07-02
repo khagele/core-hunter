@@ -140,6 +140,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-disconnect { border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
+#ss-mqtt-pause-btn { margin-left: 8px; }
 .ss-disconnect:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
   opacity: 0.45; }
 .ss-radio-section { margin-top: 16px; }
