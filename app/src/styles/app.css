@@ -83,15 +83,19 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
-#layer-toggle, #filter-btn, #discover-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #filter-btn, #discover-btn, #recenter-btn, #locate-toggle-btn { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 #layer-toggle { bottom: 192px; } #filter-btn { bottom: 246px; } #discover-btn { bottom: 300px; }
 #recenter-btn { bottom: 354px; }
-#layer-toggle svg, #filter-btn svg, #discover-btn svg, #recenter-btn svg { pointer-events: none; }
+#locate-toggle-btn { bottom: 408px; }
+#layer-toggle svg, #filter-btn svg, #discover-btn svg, #recenter-btn svg, #locate-toggle-btn svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
+/* Locate overlay toggle — on (visible) reads accent, off (hidden) reads muted */
+#locate-toggle-btn.active { color: var(--ch-accent); }
+#locate-toggle-btn:not(.active) { color: var(--ch-muted); }
 
 /* Active-filter indicator: accent badge in the corner of the filter FAB */
 #filter-btn.active { color: var(--ch-accent); }

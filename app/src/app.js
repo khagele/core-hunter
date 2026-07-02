@@ -854,6 +854,7 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   }
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender
+  el('locate-toggle-btn').hidden = !state.filter.sender
   refreshFilterIndicator()
 })
 
@@ -928,6 +929,17 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   if (state.map) state.map.onFollowChange(updateCompassIcon)
   if (state.map) state.map.onLocate(updateLocateInfo)
+
+  // Locate overlay toggle — visible only while a sender is isolated (see the
+  // hunt:isolate-sender handler above). Defaults on; hiding it only hides the
+  // rendered heatmap/markers/info-box, the estimate itself keeps computing.
+  let locateVisible = true
+  el('locate-toggle-btn').classList.add('active')
+  el('locate-toggle-btn').addEventListener('click', () => {
+    locateVisible = !locateVisible
+    el('locate-toggle-btn').classList.toggle('active', locateVisible)
+    if (state.map) state.map.setLocateVisible(locateVisible)
+  })
 
   el('filter-btn').addEventListener('click', () => {
     const sheet = el('filter-sheet')
