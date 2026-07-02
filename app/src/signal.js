@@ -19,6 +19,20 @@ export function effectivePlotOffset(calibrationOffset = 0, attenuatorDb = 0) {
   return (calibrationOffset || 0) - (attenuatorDb || 0)
 }
 
+// ageFade returns an opacity multiplier for a reception's age within the
+// active time window: 1 when brand-new, linearly down to AGE_FADE_FLOOR at the
+// window edge (#149). Old points fade instead of vanishing hard, so recent
+// versus stale is readable at a glance. With no time window (windowMs null),
+// or an unusable rx_at, nothing fades.
+const AGE_FADE_FLOOR = 0.15
+export function ageFade(rxAt, nowMs, windowMs) {
+  if (windowMs == null || !(windowMs > 0)) return 1
+  const t = Date.parse(rxAt)
+  if (Number.isNaN(t)) return 1
+  const frac = Math.max(0, Math.min(1, (nowMs - t) / windowMs))
+  return 1 - (1 - AGE_FADE_FLOOR) * frac
+}
+
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
 export function rssiTier(rssi, offset = 0) {

@@ -590,7 +590,11 @@ function buildFilterSheet() {
   syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterIndicator() })
-  sel.addEventListener('change', () => { state.filter.windowMs = Number(sel.value) || null; syncWindowRow(); refreshFilterIndicator() })
+  sel.addEventListener('change', () => {
+    state.filter.windowMs = Number(sel.value) || null
+    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
+    syncWindowRow(); refreshFilterIndicator()
+  })
 
   // Type chips — the "All" chip (default) means no type filter. Picking a
   // specific type turns All off; clearing the last specific turns All back on.
@@ -972,6 +976,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initialise map
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
+  state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise feed panel
   state.feed = createFeedPanel('feed-panel', {
