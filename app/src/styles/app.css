@@ -201,7 +201,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .feed-mid { color: var(--ch-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-time { color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .feed-iso, .feed-ign { background: transparent; color: var(--ch-text); border: 0; padding: 0 10px; font-size: 1.1em; cursor: pointer; }
-.feed-iso.active { color: var(--ch-accent); }
+.feed-iso.active, .feed-ign.active { color: var(--ch-accent); }
 
 /* Map popup isolate/ignore buttons */
 .ch-isolate, .ch-ignore { border: 1px solid var(--ch-accent-2); border-radius: 8px; padding: 4px 8px;

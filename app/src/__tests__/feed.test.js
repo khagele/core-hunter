@@ -13,9 +13,9 @@ describe('feedItems', () => {
     ], {})
     expect(out.map((r) => r.sender_id)).toEqual(['A', 'B'])
   })
-  it('drops ignored sender ids (case-insensitive)', () => {
+  it('keeps ignored senders visible so the ⊘ button can toggle them back off', () => {
     const out = feedItems([rec({ sender_id: 'AA' }), rec({ sender_id: 'bb' })], { ignore: new Set(['aa']) })
-    expect(out.map((r) => r.sender_id)).toEqual(['bb'])
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['AA', 'bb'])
   })
   it('sorts newest-first and respects limit', () => {
     const out = feedItems([
