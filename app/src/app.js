@@ -25,8 +25,7 @@ import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
 import { isSettingsActive } from './settings.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset } from './signal.js'
-import { feedItems } from './feed.js'
-import { createFeedPanel } from './feedpanel.js'
+import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
@@ -78,7 +77,7 @@ const state = {
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
-  feed: null,
+  rxLog: null,
   targetList: null,
   connected: false,
   wakeLock: null,
@@ -305,13 +304,14 @@ async function drawOnce() {
     const now = Date.now()
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
     enrichNames(rows)
+    const fn = makeFilter({ ...state.filter, ignore: state.ignore })
+    const filteredRows = rows.filter((r) => fn(r, now))
     if (state.map) {
-      const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-      state.map.render(rows.filter((r) => fn(r, now)), state.filter.sender && state.filter.sender.id)
+      state.map.render(filteredRows, state.filter.sender && state.filter.sender.id)
     }
-    if (state.feed) {
-      state.feed.render(feedItems(rows, { limit: 50 }), now, state.filter.sender && state.filter.sender.id, state.ignore)
-    }
+    // Receptions log (#130): filtered = the plotted set (one-to-one with the
+    // map); all = every captured reception. The toggle is log-only.
+    if (state.rxLog) state.rxLog.render(filteredRows, rows, now)
     if (state.targetList) state.targetList.render(rows, state.ignore, now, state.filter.sender && state.filter.sender.id)
   } catch (_) {
     // silent — render failure must not crash the loop
@@ -456,7 +456,7 @@ function setHuntingChrome(connected) {
   el('connect-btn').hidden = connected
   el('hud-bar').hidden = connected
   el('hud-bar-labels').hidden = connected
-  // HUD height changed → recompute --ch-hud-h (drives the #feed-panel offset)
+  // HUD height changed → recompute --ch-hud-h (drives the #splash bottom inset)
   window.dispatchEvent(new Event('resize'))
 }
 
@@ -980,14 +980,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.map.setAttenuator(state.attenuatorDb)
   state.map.setTimeWindow(state.filter.windowMs)
 
-  // Initialise feed panel
-  state.feed = createFeedPanel('feed-panel', {
-    onTapRow: (rec) => { if (state.map) state.map.focusReception(rec) },
-    onIsolate: (id) => document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id } })),
-    onIgnore: (id) => document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id } })),
+  // Initialise the receptions log (#130) — replaces the Messages panel. The
+  // playhead reception highlights its map marker; tapping a marker rolls the
+  // playhead to it (two-way sync).
+  state.rxLog = createReceptionLog('rx-log', {
+    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null) },
   })
+  if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
 
-  // Publish the real HUD height as --ch-hud-h so #feed-panel sits above it
+  // Publish the real HUD height as --ch-hud-h so #splash sits above it
   const hudEl = document.getElementById('hud')
   if (hudEl) {
     const setHudH = () => document.documentElement.style.setProperty('--ch-hud-h', hudEl.offsetHeight + 'px')

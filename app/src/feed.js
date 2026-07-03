@@ -1,22 +1,7 @@
-// discover_pubkey rows are DISCOVER_RESP replies — a directly-heard node
-// announcing itself, so they belong in the feed like adverts do (#129).
-const FEED_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey'])
-
-// TARGET_KINDS additionally allows 'relay' — a last-hop repeater attributed via
-// path[last] of a relayed FLOOD packet (see meshpacket.js classifyReception).
-// It carries no message text, so it stays out of FEED_KINDS/the message feed,
-// but it is a valid directly-heard node and belongs in the target dropdown.
-const TARGET_KINDS = new Set([...FEED_KINDS, 'relay'])
-
-// Ignored senders stay in the feed (the ⊘ button renders their state and
-// toggles them back off); ignore filters only the map/heat layers.
-export function feedItems(records, { limit = 50 } = {}) {
-  return (records || [])
-    .filter((r) => FEED_KINDS.has(r.sender_kind))
-    .slice()
-    .sort((a, b) => Date.parse(b.rx_at) - Date.parse(a.rx_at))
-    .slice(0, limit)
-}
+// Kinds that name a directly-heard node, so they can be selected as a target.
+// discover_pubkey is a DISCOVER_RESP reply (#129); relay is a last-hop repeater
+// attributed via path[last] of a relayed FLOOD packet (see meshpacket.js).
+const TARGET_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey', 'relay'])
 
 // dedupeSenders collapses receptions into one row per heard sender, keeping
 // the most recent reception for each (used as the basis for both the

@@ -21,9 +21,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .dot-label { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 10px; color: var(--ch-muted); letter-spacing: .08em; margin-right: 4px; }
 
-/* Single-hunter locate readout — floats just under the topbar, shown only
-   while a sender is isolated (see huntmap.js's onLocate callback). */
-#locate-info { position: fixed; top: 50px; left: 12px; right: 12px; z-index: 550;
+/* Single-hunter locate readout — floats top-left under the topbar, beside the
+   receptions log (top-right); shown only while a sender is isolated. */
+#locate-info { position: fixed; top: 50px; left: 12px; width: 170px; z-index: 550;
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
@@ -178,30 +178,33 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
 
-/* ---- Messages feed panel ---- */
-#feed-panel {
-  position: fixed; left: 0; right: 0; bottom: var(--ch-hud-h, 96px); z-index: 5;
-  background: var(--ch-surface); color: var(--ch-text);
-  border-top: 1px solid var(--ch-border);
-  display: flex; flex-direction: column; max-height: 45vh;
-}
-#feed-handle {
-  background: transparent; color: var(--ch-text); border: 0; text-align: left;
-  padding: 8px 12px; font: inherit; cursor: pointer;
-}
-#feed-count { color: var(--ch-muted); }
-#feed-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
-#feed-panel.collapsed #feed-list { display: none; }
-.feed-item { display: flex; align-items: center; border-top: 1px solid var(--ch-border); }
-.feed-row { flex: 1; display: grid; grid-template-columns: 3.5em 1fr auto; gap: 8px; align-items: baseline;
-  background: transparent; color: var(--ch-text); border: 0; text-align: left; padding: 8px 10px; font: inherit; cursor: pointer;
-  user-select: none; -webkit-user-select: none; }
-.feed-rssi { color: var(--ch-accent); font-variant-numeric: tabular-nums; }
-.feed-label { font-weight: 600; }
-.feed-mid { color: var(--ch-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feed-time { color: var(--ch-muted); font-variant-numeric: tabular-nums; }
-.feed-iso, .feed-ign { background: transparent; color: var(--ch-text); border: 0; padding: 0 10px; font-size: 1.1em; cursor: pointer; }
-.feed-iso.active, .feed-ign.active { color: var(--ch-accent); }
+/* ---- Receptions log (#130) ----
+   Frameless, log-style tail over the map (top-right). Newest at the bottom; a
+   fixed playhead lane (scroll-padding-top / LANE) that lines snap to like a
+   combination-lock dial. No background panel — text-shadow carries legibility. */
+#rx-log { position: fixed; top: 52px; right: 0; width: 214px; z-index: 480;
+  padding: 0 10px;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.rx-hd { display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
+  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); }
+.rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
+.rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
+/* height 200 = LANE(6)+1+3 rows @ 20px; scroll-padding-top = LANE*20 = 120 */
+.rx-list { height: 200px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: 120px; padding: 120px 0 60px; }
+.rx-list::-webkit-scrollbar { display: none; }
+.rx-ln { display: flex; gap: 6px; height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden;
+  cursor: pointer; scroll-snap-align: start; color: var(--ch-text);
+  text-shadow: 0 1px 2px var(--ch-bg); content-visibility: auto; contain-intrinsic-size: 0 20px; }
+.rx-gt { width: 16px; flex: none; color: var(--ch-accent); font-weight: 700; }
+.rx-tm { width: 26px; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+.rx-rs { width: 32px; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rx-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rx-me { color: var(--ch-muted); }
+.rx-nm { color: var(--ch-muted); font-size: 10px; margin-left: 3px; }
+.rx-ln.act .rx-gt:before { content: '→'; }
+.rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 /* Map popup isolate/ignore buttons */
 .ch-isolate, .ch-ignore { border: 1px solid var(--ch-accent-2); border-radius: 8px; padding: 4px 8px;
