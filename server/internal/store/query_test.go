@@ -9,11 +9,14 @@ func seed(t *testing.T) *Store {
 		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:00:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51.0, Lon: 4.0, SenderID: "aa", SenderKind: "direct_hash", PacketType: "Response"},
 		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T11:00:00Z", RSSI: -80, Raw: "00", IsDirect: true, Lat: 51.0, Lon: 4.0, SenderID: "bb", SenderKind: "direct_hash", PacketType: "Response"},
 		{HunterPubkey: "h2", HunterName: "B", RxAt: "2026-06-30T10:30:00Z", RSSI: -60, Raw: "00", IsDirect: true, Lat: 52.0, Lon: 5.0, SenderID: "aa", SenderKind: "direct_hash", PacketType: "Response"},
-		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:10:00Z", RSSI: -50, Raw: "00", IsDirect: false, Lat: 51.0, Lon: 4.0, SenderID: "cc", PacketType: "Response"}, // relayed → excluded
+		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:10:00Z", RSSI: -50, Raw: "00", IsDirect: false, Hops: 2, Lat: 51.0, Lon: 4.0, SenderID: "cc", PacketType: "Response"}, // relayed (last-hop measurement)
 	}
 	for _, r := range rows { if err := st.Insert(r); err != nil { t.Fatalf("insert: %v", err) } }
 	return st
 }
+
+// hops0 returns the direct-only filter value (hops = 0) for tests.
+func hops0() *int { z := 0; return &z }
 
 func TestQueryPointsZeroHopAndFilters(t *testing.T) {
 	st := seed(t); defer st.Close()
@@ -23,9 +26,35 @@ func TestQueryPointsZeroHopAndFilters(t *testing.T) {
 	if len(got) != 1 || got[0].SenderID != "aa" || got[0].HunterPubkey != "h1" {
 		t.Fatalf("hunter+sender filter wrong: %+v", got)
 	}
-	// relayed row never returned
+	// no hops filter → relayed rows are returned too (#142: is_direct is not a
+	// query condition; direct-only is an explicit hops=0 filter)
 	all, _, _ := st.QueryPoints(Filter{Limit: 100})
-	for _, p := range all { if p.SenderID == "cc" { t.Fatal("relayed row leaked") } }
+	seen := false
+	for _, p := range all { if p.SenderID == "cc" { seen = true; if p.Hops != 2 { t.Fatalf("hops not exposed: %+v", p) } } }
+	if !seen { t.Fatal("relayed row missing without hops filter") }
+	// hops=0 → relayed row excluded
+	direct, _, _ := st.QueryPoints(Filter{Hops: hops0(), Limit: 100})
+	if len(direct) != 3 { t.Fatalf("hops=0 filter wrong: %+v", direct) }
+	for _, p := range direct { if p.SenderID == "cc" { t.Fatal("relayed row leaked through hops=0") } }
+}
+
+func TestQueryPointsPacketTypeFilter(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil { t.Fatalf("open: %v", err) }
+	defer st.Close()
+	rows := []Reception{
+		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:00:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51, Lon: 4, SenderID: "aa", PacketType: "Advert"},
+		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:01:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51, Lon: 4, SenderID: "bb", PacketType: "GroupText"},
+		{HunterPubkey: "h1", HunterName: "A", RxAt: "2026-06-30T10:02:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51, Lon: 4, SenderID: "cc", PacketType: "Trace"},
+	}
+	for _, r := range rows { if err := st.Insert(r); err != nil { t.Fatalf("insert: %v", err) } }
+	got, _, err := st.QueryPoints(Filter{Types: []string{"Advert", "GroupText"}, Limit: 10})
+	if err != nil { t.Fatalf("query: %v", err) }
+	if len(got) != 2 { t.Fatalf("types filter wrong: %+v", got) }
+	for _, p := range got { if p.PacketType == "Trace" { t.Fatal("filtered type leaked") } }
+	// empty Types → all rows
+	all, _, _ := st.QueryPoints(Filter{Limit: 10})
+	if len(all) != 3 { t.Fatalf("no-types filter wrong: %+v", all) }
 }
 
 func TestQueryPointsReturnsSenderRole(t *testing.T) {
@@ -53,19 +82,19 @@ func TestQueryPointsTimeAndIgnore(t *testing.T) {
 
 func TestQueryPointsTruncation(t *testing.T) {
 	st := seed(t); defer st.Close()
-	// 3 zero-hop rows total; Limit 2 → truncated. Limit 3 (==total) → not truncated.
-	got, trunc, _ := st.QueryPoints(Filter{Limit: 2})
+	// 3 zero-hop rows; Limit 2 → truncated. Limit 3 (==total) → not truncated.
+	got, trunc, _ := st.QueryPoints(Filter{Hops: hops0(), Limit: 2})
 	if len(got) != 2 || !trunc { t.Fatalf("expected 2 rows + truncated, got %d trunc=%v", len(got), trunc) }
-	got, trunc, _ = st.QueryPoints(Filter{Limit: 3})
+	got, trunc, _ = st.QueryPoints(Filter{Hops: hops0(), Limit: 3})
 	if len(got) != 3 || trunc { t.Fatalf("expected 3 rows + not truncated, got %d trunc=%v", len(got), trunc) }
 }
 
 func TestQueryPointsOffsetPaging(t *testing.T) {
 	st := seed(t); defer st.Close()
 	// 3 zero-hop rows, newest first: bb(11:00), aa@h2(10:30), aa@h1(10:00).
-	p1, trunc1, err := st.QueryPoints(Filter{Limit: 2})
+	p1, trunc1, err := st.QueryPoints(Filter{Hops: hops0(), Limit: 2})
 	if err != nil { t.Fatalf("page1: %v", err) }
-	p2, trunc2, err := st.QueryPoints(Filter{Limit: 2, Offset: 2})
+	p2, trunc2, err := st.QueryPoints(Filter{Hops: hops0(), Limit: 2, Offset: 2})
 	if err != nil { t.Fatalf("page2: %v", err) }
 	if len(p1) != 2 || !trunc1 { t.Fatalf("page1: want 2 rows truncated, got %d trunc=%v", len(p1), trunc1) }
 	if len(p2) != 1 || trunc2 { t.Fatalf("page2: want 1 row not truncated, got %d trunc=%v", len(p2), trunc2) }
@@ -79,21 +108,22 @@ func TestQueryPointsOffsetPaging(t *testing.T) {
 		}
 	}
 	// offset past the end → empty, not truncated
-	p3, trunc3, _ := st.QueryPoints(Filter{Limit: 2, Offset: 10})
+	p3, trunc3, _ := st.QueryPoints(Filter{Hops: hops0(), Limit: 2, Offset: 10})
 	if len(p3) != 0 || trunc3 { t.Fatalf("past-end page: got %d trunc=%v", len(p3), trunc3) }
 }
 
 func TestHunters(t *testing.T) {
 	st := seed(t); defer st.Close()
+	// counts include relayed rows (#142): h1 has 2 zero-hop + 1 relayed.
 	hs, _ := st.Hunters("", "", nil)
 	m := map[string]int{}; for _, h := range hs { m[h.Pubkey] = h.Count }
-	if m["h1"] != 2 || m["h2"] != 1 { t.Fatalf("hunters counts (zero-hop only) wrong: %+v", hs) }
+	if m["h1"] != 3 || m["h2"] != 1 { t.Fatalf("hunters counts wrong: %+v", hs) }
 }
 
 func TestHuntersIgnore(t *testing.T) {
 	st := seed(t); defer st.Close()
-	// ignore 'aa' → h1 keeps bb (1), h2 loses its only sender (aa) → drops out.
+	// ignore 'aa' → h1 keeps bb + cc (2), h2 loses its only sender (aa) → drops out.
 	hs, _ := st.Hunters("", "", []string{"aa"})
 	m := map[string]int{}; for _, h := range hs { m[h.Pubkey] = h.Count }
-	if m["h1"] != 1 || m["h2"] != 0 { t.Fatalf("hunters ignore wrong: %+v", hs) }
+	if m["h1"] != 2 || m["h2"] != 0 { t.Fatalf("hunters ignore wrong: %+v", hs) }
 }
