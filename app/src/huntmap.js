@@ -43,8 +43,47 @@ function heatmapOverlay(hm) {
     { opacity: 0.7, interactive: false })
 }
 
+// leaflet-rotate (0.2.8, latest) overrides L.Renderer._updateTransform and its
+// own source carries an unresolved "@FIXME: layer drifts on map.setZoom() (eg.
+// zoom during animation)": with `rotate: true` the vector/marker panes are
+// re-transformed on every zoom-animation/pinch frame against a corrupted
+// anchor, so points and hexes drift visibly off the basemap until the fingers
+// release (#167). Tiles stay correct because GridLayer keeps its own per-level
+// origin and transforms with `origin × scale − map._getNewPixelOrigin()` — so
+// give the renderer the exact same math. Two things matter:
+//  1. the container content is drawn relative to _bounds.min under the pixel
+//     origin that was current when _update() computed those bounds — and the
+//     map's stored pixel origin has ALREADY moved to the destination zoom by
+//     the time _updateTransform fires, so that origin must be snapshotted in
+//     _update() (the plugin instead re-derives the anchor via its
+//     rotation-aware layerPointToLatLng, which bakes stale rotate-pane
+//     offsets into it — that is the drift);
+//  2. the target frame is the plugin's rotation-aware _getNewPixelOrigin,
+//     the same one the tiles use, so vectors and tiles cannot diverge.
+// Remove when fixed upstream.
+function patchRendererZoomTransform() {
+  if (typeof L === 'undefined' || !L.Renderer || L.Renderer.prototype._chZoomDriftPatched) return
+  const prevUpdate = L.Renderer.prototype._update
+  const prevTransform = L.Renderer.prototype._updateTransform
+  L.Renderer.prototype._update = function () {
+    const r = prevUpdate.apply(this, arguments)
+    if (this._map && this._map._rotate) this._chPixelOrigin = this._map.getPixelOrigin()
+    return r
+  }
+  L.Renderer.prototype._updateTransform = function (center, zoom) {
+    if (!this._map._rotate) return prevTransform.apply(this, arguments)
+    const scale = this._map.getZoomScale(zoom, this._zoom)
+    const offset = this._bounds.min.add(this._chPixelOrigin || this._map.getPixelOrigin())
+      .multiplyBy(scale)
+      .subtract(this._map._getNewPixelOrigin(center, zoom))
+    L.DomUtil.setTransform(this._container, offset, scale)
+  }
+  L.Renderer.prototype._chZoomDriftPatched = true
+}
+
 export function createHuntMap(containerId) {
   if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, destroy() {} }
+  patchRendererZoomTransform()
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back. Attenuator is set at
