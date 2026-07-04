@@ -34,6 +34,7 @@ import { createWakeLock } from './wakelock.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
+import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -460,6 +461,20 @@ function setHuntingChrome(connected) {
   window.dispatchEvent(new Event('resize'))
 }
 
+// Fetch the current account/session and reflect it in the Account section:
+// status label + which of Register/Login/Logout/Link are visible. Called
+// whenever the Settings sheet opens (and once on first build).
+async function refreshAccount() {
+  const me = await fetchMe()
+  state.account = me
+  const s = accountDisplayState(me, state.rxPubkey)
+  el('ss-account-status').textContent = s.label
+  el('ss-acc-register').hidden = !s.showRegister
+  el('ss-acc-login').hidden = !s.showLogin
+  el('ss-acc-logout').hidden = !s.showLogout
+  el('ss-acc-link').hidden = !s.showLink
+}
+
 // Mirror the connection state into the BLE-settings Connection section. No-op
 // until the settings sheet has been built.
 function refreshConnState() {
@@ -504,6 +519,8 @@ async function disconnectAll(silent) {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
+  state.rxPubkey = ''
+  state.sf = null
   el('discover-btn').disabled = true
 
   if (state.wakeLock) state.wakeLock.disable()
@@ -728,6 +745,27 @@ function buildSettingsSheet() {
         <button id="ss-conn-btn" class="ss-connect">Connect</button>
         <button id="ss-mqtt-pause-btn" class="ss-disconnect">Pause MQTT</button>
       </div>
+      <div class="ss-account-section">
+        <h3>Account</h3>
+        <p id="ss-account-status" class="ss-acc-status">Not logged in</p>
+        <div class="ss-acc-actions">
+          <button id="ss-acc-register" type="button">Register</button>
+          <button id="ss-acc-login" type="button">Login</button>
+          <button id="ss-acc-link" type="button" hidden>Link this companion</button>
+          <button id="ss-acc-logout" type="button" hidden>Logout</button>
+        </div>
+        <form id="ss-acc-form" class="ss-acc-form" hidden>
+          <input id="ss-acc-username" type="text" placeholder="Username" autocomplete="username" />
+          <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" autocomplete="current-password" />
+          <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" autocomplete="email" hidden />
+          <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
+          <div class="ss-acc-form-actions">
+            <button id="ss-acc-submit" type="submit">Submit</button>
+            <button id="ss-acc-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+        <p id="ss-acc-msg" class="ss-acc-msg" hidden></p>
+      </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
         <label class="ss-radio-row" id="ss-row-atten">
@@ -799,6 +837,92 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+
+  let accFormMode = null // 'login' | 'register'
+
+  function openAccForm(mode) {
+    accFormMode = mode
+    el('ss-acc-form').hidden = false
+    el('ss-acc-email').hidden = mode !== 'register'
+    el('ss-acc-remember-row').hidden = mode !== 'login'
+    el('ss-acc-msg').hidden = true
+    el('ss-acc-username').value = ''
+    el('ss-acc-password').value = ''
+    el('ss-acc-email').value = ''
+  }
+  function closeAccForm() { el('ss-acc-form').hidden = true; accFormMode = null }
+  function accMsg(text, ok) {
+    const m = el('ss-acc-msg'); m.textContent = text; m.hidden = false
+    m.classList.toggle('ok', !!ok)
+  }
+
+  el('ss-acc-login').addEventListener('click', () => openAccForm('login'))
+  el('ss-acc-register').addEventListener('click', () => {
+    if (!state.connected || !state.rxPubkey) {
+      accMsg('Connect a companion first — registration links it to your account.')
+      el('ss-acc-msg').hidden = false
+      return
+    }
+    openAccForm('register')
+  })
+  el('ss-acc-cancel').addEventListener('click', closeAccForm)
+
+  el('ss-acc-link').addEventListener('click', async () => {
+    if (!state.rxPubkey) return
+    const short = state.rxPubkey.slice(0, 12) + '…'
+    accMsg(`Linking companion ${short}…`)
+    const r = await postAuth('/api/auth/link-companion', buildLinkBody(state.rxPubkey))
+    if (r.ok) { await refreshAccount(); accMsg('Companion linked.', true) }
+    else if (r.status === 401) accMsg('Log in first.')
+    else accMsg('Linking failed — check your connection.')
+  })
+
+  el('ss-acc-logout').addEventListener('click', async () => {
+    const r = await postAuth('/api/auth/logout', {})
+    if (r.ok) {
+      closeAccForm()
+      await refreshAccount()
+      accMsg('Logged out.', true)
+    } else {
+      accMsg('Logout failed — check your connection.')
+    }
+  })
+
+  el('ss-acc-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const username = el('ss-acc-username').value.trim()
+    const password = el('ss-acc-password').value
+
+    if (accFormMode === 'login') {
+      const remember = el('ss-acc-remember').checked
+      const r = await postAuth('/api/auth/login', buildLoginBody({ username, password, remember }))
+      if (r.ok) { closeAccForm(); await refreshAccount() }
+      else if (r.status === 401) accMsg('Wrong username or password.')
+      else if (r.status === 403) accMsg('This account is disabled.')
+      else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
+      else accMsg('Login failed — check your connection.')
+      return
+    }
+    if (accFormMode === 'register') {
+      const email = el('ss-acc-email').value
+      const errs = validateRegistration({ username, password, companionPubkey: state.rxPubkey })
+      if (errs.length) {
+        accMsg(errs.includes('password_too_short') ? 'Password must be at least 10 characters.'
+             : errs.includes('username_invalid') ? 'Enter a username.'
+             : 'Connect a companion first.')
+        return
+      }
+      const r = await postAuth('/api/auth/register',
+        buildRegisterBody({ username, password, email, companionPubkey: state.rxPubkey }))
+      if (r.ok) { closeAccForm(); await refreshAccount(); accMsg('Account created — logged in.', true) }
+      else if (r.status === 409) accMsg('That username is taken.')
+      else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
+      else accMsg('Registration failed — check your connection.')
+      return
+    }
+  })
+
+  refreshAccount()
 }
 
 // Fetch the deployed version (no-store so we always see the live file) and, if
@@ -1070,6 +1194,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
       refreshConnState()
+      refreshAccount()
       checkForUpdate()
     }
   })
