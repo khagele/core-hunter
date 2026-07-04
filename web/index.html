@@ -5,7 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>core-hunter — analysis</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <script type="module">
+    import { VERSION } from './version.js'
+    const v = '?v=' + VERSION
+    const css = document.createElement('link')
+    css.rel = 'stylesheet'; css.href = 'style.css' + v
+    document.head.appendChild(css)
+    for (const src of ['filters.js', 'map.js']) {
+      const s = document.createElement('script')
+      s.type = 'module'; s.src = src + v
+      document.body.appendChild(s)
+    }
+  </script>
 </head>
 <body>
   <header id="bar">
@@ -17,19 +28,34 @@
     <label class="cs-cb"><input type="checkbox" id="f-direct" /> Direct only</label>
     <button id="layer-toggle">points</button>
     <button id="locate-toggle">Locate</button>
-    <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
-    <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
+    <span class="cs-layer-toggle">
+      <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
+      <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
+    </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
+    <button id="auth-btn" class="bar-btn">Log in</button>
+    <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>
     <span id="sf-counts"></span>
     <span id="ch-version"></span>
   </header>
   <div id="locate-info" hidden></div>
+  <div id="login-modal" class="lc-modal" hidden>
+    <form id="login-form" class="lc-card">
+      <h4>Log in</h4>
+      <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
+      <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+      <label class="lc-remember"><input id="login-remember" type="checkbox" /> Remember me</label>
+      <p id="login-error" class="lc-warn" hidden>Login failed.</p>
+      <div class="lc-actions">
+        <button id="login-submit" type="submit">Log in</button>
+        <button id="login-cancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </div>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="filters.js"></script>
-  <script type="module" src="map.js"></script>
   <script type="module">
     import { VERSION } from './version.js';
     import { API_BASE } from './config.js';

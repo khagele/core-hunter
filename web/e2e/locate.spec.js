@@ -12,6 +12,7 @@ const POINTS = [
 // Stub the read endpoints by default so the page's own refresh/poll never errors
 // and the test asserts only what it sets up. Individual tests override as needed.
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
@@ -110,4 +111,14 @@ test('Locate surfaces a fetch error instead of crashing the poll loop', async ({
   await page.fill('#f-sender', '4a')
   await page.click('#locate-toggle')
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
+})
+
+test('best-signal star never renders for guests', async ({ page }) => {
+  await page.route('**/api/auth/me', r => r.fulfill({ json: { role: 'guest' } }))
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: [
+    { lat: 51, lon: 4, rssi: -60, snr: 8, sender_id: 'aa', hunter_pubkey: 'h1', hunter_name: 'Hunter 1', rx_at: '2026-07-03T10:00:00Z' }
+  ], truncated: false } }))
+  await page.goto('/?locate=1&sender=aa')  // attempt to force Locate via URL
+  await expect(page.locator('.lc-strongest')).toHaveCount(0)
+  await expect(page.locator('.lc-centroid')).toHaveCount(0)
 })

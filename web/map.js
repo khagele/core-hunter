@@ -4,6 +4,10 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } fro
 import { locate } from './locate.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
+import { initAuthBar } from './login.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
+
+let currentRole = 'guest'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -81,7 +85,7 @@ async function drawPoints() {
     const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
     const sid = pt.sender_id || ''
     const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
-    const locBtn = sid ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
+    const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
     L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}${locBtn}`)
@@ -107,6 +111,50 @@ async function drawHex() {
       .addTo(hexLayer)
   }
   document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
+}
+
+function applyLocateGate() {
+  const show = canSeeLocate(currentRole)
+  const btn = document.getElementById('locate-toggle')
+  if (btn) btn.hidden = !show
+  if (!show && locateActive) deactivateLocate()
+}
+// Hides the CS-layer toggle control (and drops its layers) for non-members;
+// the server returns 403 for /api/observer-points below member so there is
+// nothing useful to show or fetch.
+function applyObserverGate() {
+  const show = canSeeObserverPoints(currentRole)
+  const toggle = document.querySelector('.cs-layer-toggle')
+  if (toggle) toggle.hidden = !show
+  if (!show) {
+    clearObserverLayers()
+  } else {
+    // Deferred CS-layer deep-link restore (mirrors the Locate restore below):
+    // the ?adv=1/?rel=1 checkbox state was applied at module-eval time, before
+    // the real role was known, so drawObserverPoints() early-returned then.
+    // Redraw only the checked layers now that the gate is open.
+    if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+    if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+  }
+}
+
+function applyRole(me) {
+  currentRole = me.role || 'guest'
+  const notice = document.getElementById('guest-notice')
+  const msg = guestNotice(currentRole)
+  notice.textContent = msg || ''
+  notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
+  notice.hidden = !msg
+  applyLocateGate()
+  applyObserverGate()
+  refresh()
+  // Deferred ?locate=1 restore (Task 5): fires once, the first time the
+  // resolved role can see Locate — including a guest who logs in as a member
+  // later, since applyRole() re-runs on login too.
+  if (wantLocate && !locateRestored && canSeeLocate(currentRole) && window.currentFilters().sender) {
+    locateRestored = true
+    activateLocate()
+  }
 }
 
 let t = null
@@ -272,8 +320,10 @@ async function drawLocate() {
   const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
   const hk = encodeURIComponent(f.sender)
   const extra = []
-  if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
-  if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+  if (canSeeObserverPoints(currentRole)) {
+    if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
+    if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+  }
   if (extra.length) {
     const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
     for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
@@ -283,6 +333,7 @@ async function drawLocate() {
 
 const locateBtn = document.getElementById('locate-toggle')
 function activateLocate() {
+  if (!canSeeLocate(currentRole)) return
   if (locateActive) { drawLocate(); return }
   locateActive = true
   locateBtn.classList.add('on')
@@ -331,6 +382,7 @@ document.addEventListener('click', (e) => {
 // repeater name. Relays (last-hop repeaters) drawn as a ring to distinguish them
 // from the solid advert (zero-hop node) dots.
 async function drawObserverPoints(src, layer, ring) {
+  if (!canSeeObserverPoints(currentRole)) return
   layer.clearLayers()
   const f = (window.currentFilters && window.currentFilters()) || {}
   const p = new URLSearchParams({ src })
@@ -355,7 +407,7 @@ async function drawObserverPoints(src, layer, ring) {
     const name = (isResolvableId(id) && cachedName(id)) || id || '—'
     const hk = pt.heard_key || ''
     const idLine = hk ? `<br><span class="pp-id">${esc(hk)}</span>` : ''
-    const locBtn = hk ? `<br><button class="lc-locate" data-sender="${esc(hk)}">Locate this sender</button>` : ''
+    const locBtn = (hk && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(hk)}">Locate this sender</button>` : ''
     const opts = ring
       ? { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.12 }
       : { radius: 4, color: col, weight: 1, fillColor: col, fillOpacity: fillOpacity(tier) }
@@ -375,6 +427,13 @@ async function drawObserverPoints(src, layer, ring) {
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
 const csCbForSrc = (src) => (src === 'advert' ? csAdvertCb : csRelayCb)
+// Drops both CS observer layers and resets their checkboxes — used when the
+// gate hides the toggle so a later role change doesn't reveal a stale-checked
+// control with a cleared layer.
+function clearObserverLayers() {
+  csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  csAdvertCb.checked = false; csRelayCb.checked = false
+}
 function toggleCsLayer(cb, src, layer, ring) {
   if (locateActive) { drawLocate(); return } // focus mode: feed Locate, not the all-nodes layer
   cb.checked ? drawObserverPoints(src, layer, ring) : layer.clearLayers()
@@ -437,16 +496,21 @@ urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 const wantLocate = urlstate.initial('locate', '') === '1'
+let locateRestored = false // wantLocate fires at most once, see applyRole() below
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
 updateSenderTitle() // tooltip for a sender restored from the URL/storage
 
 // Restore state that a value alone does not trigger (checkbox draw, locate focus).
-if (wantLocate && window.currentFilters().sender) {
-  activateLocate()
-} else {
-  if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-  if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
-  refresh()
-}
+// A ?locate=1 restore is NOT triggered here: currentRole is still the 'guest'
+// default at this point (initAuthBar()'s fetchMe() below hasn't resolved yet),
+// so activateLocate()'s role gate would always block it. That restore is
+// deferred into applyRole(), once the real role is known.
+if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+refresh()
+
+// Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
+// role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.
+initAuthBar(applyRole)
