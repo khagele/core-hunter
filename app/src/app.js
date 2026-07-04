@@ -32,7 +32,7 @@ import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
-import { compassHeading, bearingForHeading, nextCompassState } from './rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 
 // ---------------------------------------------------------------------------
@@ -860,6 +860,11 @@ function updateLayerIcon() {
 // up) → tap → follow + heading rotation (map turns with the device) → tap →
 // follow north-up again. Panning drops back to static; a two-finger rotate
 // gesture takes over rotation manually and leaves heading mode.
+//
+// The FAB icon previews the state a tap will PRODUCE (via nextCompassState),
+// not the current one — so it reads as an action. Because every next-state is
+// a follow-state, only the 'following' (centre) and 'heading' (compass) glyphs
+// are ever shown; there is no 'static' icon.
 const COMPASS_ICONS = {
   following: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <circle cx="10" cy="10" r="4"/>
@@ -871,10 +876,6 @@ const COMPASS_ICONS = {
   heading: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <polygon points="10,2 15,17 10,13.2 5,17" fill="currentColor" stroke="none"/>
   </svg>`,
-  static: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-    <circle cx="10" cy="10" r="8"/>
-    <polygon points="10,4 12.2,10 10,16 7.8,10" fill="currentColor" stroke="none"/>
-  </svg>`,
 }
 const COMPASS_LABELS = {
   following: 'Rotate map with heading (compass mode)',
@@ -883,13 +884,10 @@ const COMPASS_LABELS = {
 }
 
 let compassState = { follow: true, heading: false }
-function compassGlyph({ follow, heading }) {
-  return !follow ? 'static' : heading ? 'heading' : 'following'
-}
 function updateCompassIcon() {
-  const glyph = compassGlyph(compassState)
-  el('recenter-btn').innerHTML = COMPASS_ICONS[glyph]
-  el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[glyph])
+  // Icon = the state a tap produces (preview); label = the action from here.
+  el('recenter-btn').innerHTML = COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
+  el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[compassGlyph(compassState)])
 }
 
 // Device-heading rotation. iOS only hands out DeviceOrientation after an

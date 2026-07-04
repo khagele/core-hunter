@@ -30,3 +30,11 @@ export function nextCompassState({ follow, heading }) {
   if (!follow) return { follow: true, heading: false }
   return { follow: true, heading: !heading }
 }
+
+// compassGlyph names the icon for a compass state: 'static' (not following),
+// 'following' (centred, north up), or 'heading' (map rotates with the device).
+// The FAB previews the NEXT state via compassGlyph(nextCompassState(...)), so it
+// shows what a tap will do rather than the current state.
+export function compassGlyph({ follow, heading }) {
+  return !follow ? 'static' : heading ? 'heading' : 'following'
+}
