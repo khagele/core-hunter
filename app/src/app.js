@@ -25,8 +25,7 @@ import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
 import { isSettingsActive } from './settings.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset } from './signal.js'
-import { feedItems } from './feed.js'
-import { createFeedPanel } from './feedpanel.js'
+import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
@@ -79,7 +78,7 @@ const state = {
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
-  feed: null,
+  rxLog: null,
   targetList: null,
   connected: false,
   wakeLock: null,
@@ -145,12 +144,22 @@ function setDot(id, on) {
   else d.classList.remove('on')
 }
 
-// Light the filter button's badge when the view is narrowed — either the filter
+// Light the filter pill's badge when the view is narrowed — either the filter
 // differs from the default or the ignore-list (also a display filter) is
-// non-empty. Closed-sheet signal; called wherever state.filter or state.ignore
-// changes.
-function refreshFilterIndicator() {
-  el('filter-btn').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+// non-empty. Also re-arms the locate readout glance (resetLocateFade) so the
+// estimate re-shows whenever the user changes what they're looking at. Called
+// wherever state.filter or state.ignore changes.
+function refreshFilterState() {
+  el('filter-pill').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+  resetLocateFade()
+}
+
+// Reflect the topbar popovers' open state on their triggers (aria-expanded
+// drives the filter caret rotation + a11y). Called from the document click
+// handler, which fires after every open/close path since all are click-driven.
+function syncPopoverTriggers() {
+  el('filter-pill').setAttribute('aria-expanded', String(!el('filter-sheet').hidden))
+  el('target-chip').setAttribute('aria-expanded', String(!el('target-sheet').hidden))
 }
 
 // Light the settings button's badge when a setting differs from default
@@ -306,13 +315,14 @@ async function drawOnce() {
     const now = Date.now()
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
     enrichNames(rows)
+    const fn = makeFilter({ ...state.filter, ignore: state.ignore })
+    const filteredRows = rows.filter((r) => fn(r, now))
     if (state.map) {
-      const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-      state.map.render(rows.filter((r) => fn(r, now)), state.filter.sender && state.filter.sender.id)
+      state.map.render(filteredRows, state.filter.sender && state.filter.sender.id)
     }
-    if (state.feed) {
-      state.feed.render(feedItems(rows, { limit: 50 }), now, state.filter.sender && state.filter.sender.id, state.ignore)
-    }
+    // Receptions log (#130): filtered = the plotted set (one-to-one with the
+    // map); all = every captured reception. The toggle is log-only.
+    if (state.rxLog) state.rxLog.render(filteredRows, rows, now)
     if (state.targetList) state.targetList.render(rows, state.ignore, now, state.filter.sender && state.filter.sender.id)
   } catch (_) {
     // silent — render failure must not crash the loop
@@ -457,7 +467,7 @@ function setHuntingChrome(connected) {
   el('connect-btn').hidden = connected
   el('hud-bar').hidden = connected
   el('hud-bar-labels').hidden = connected
-  // HUD height changed → recompute --ch-hud-h (drives the #feed-panel offset)
+  // HUD height changed → recompute --ch-hud-h (drives the #splash bottom inset)
   window.dispatchEvent(new Event('resize'))
 }
 
@@ -606,11 +616,11 @@ function buildFilterSheet() {
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
   syncDirectRow(); syncWindowRow()
 
-  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterIndicator() })
+  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
-    syncWindowRow(); refreshFilterIndicator()
+    syncWindowRow(); refreshFilterState()
   })
 
   // Type chips — the "All" chip (default) means no type filter. Picking a
@@ -639,7 +649,7 @@ function buildFilterSheet() {
     } else {
       state.filter.types = new Set(selected)
     }
-    refreshFilterIndicator()
+    refreshFilterState()
   })
 
   renderIgnoreList(el('ss-ignore-list'))
@@ -647,7 +657,7 @@ function buildFilterSheet() {
     state.ignore.clear()
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
-    refreshFilterIndicator()
+    refreshFilterState()
     drawOnce()
   })
 
@@ -712,7 +722,7 @@ function renderIgnoreList(listEl) {
       state.ignore.delete(key)
       saveIgnore(state.ignore)
       renderIgnoreList(listEl)
-      refreshFilterIndicator()
+      refreshFilterState()
       drawOnce()
     })
     row.appendChild(label)
@@ -1060,15 +1070,13 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   if (e.detail && e.detail.id) {
     chip.textContent = '⌖ ' + String(e.detail.id).slice(0, 12)
     chip.classList.add('active')
-    resetLocateFade()
   } else {
-    chip.textContent = 'No target'
+    chip.textContent = 'Select target'
     chip.classList.remove('active')
   }
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender
-  el('locate-toggle-btn').hidden = !state.filter.sender
-  refreshFilterIndicator()
+  refreshFilterState()
 })
 
 // ---------------------------------------------------------------------------
@@ -1081,7 +1089,7 @@ document.addEventListener('hunt:ignore-sender', (e) => {
   if (state.ignore.has(key)) state.ignore.delete(key)
   else state.ignore.add(key)
   saveIgnore(state.ignore)
-  refreshFilterIndicator()
+  refreshFilterState()
   drawOnce() // redraw now — don't wait up to 1s for the next render tick
 })
 
@@ -1104,14 +1112,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.map.setAttenuator(state.attenuatorDb)
   state.map.setTimeWindow(state.filter.windowMs)
 
-  // Initialise feed panel
-  state.feed = createFeedPanel('feed-panel', {
-    onTapRow: (rec) => { if (state.map) state.map.focusReception(rec) },
-    onIsolate: (id) => document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id } })),
-    onIgnore: (id) => document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id } })),
+  // Initialise the receptions log (#130) — replaces the Messages panel. The
+  // playhead reception highlights its map marker; tapping a marker rolls the
+  // playhead to it (two-way sync).
+  state.rxLog = createReceptionLog('rx-log', {
+    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null) },
   })
+  if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
 
-  // Publish the real HUD height as --ch-hud-h so #feed-panel sits above it
+  // Publish the real HUD height as --ch-hud-h so #splash sits above it
   const hudEl = document.getElementById('hud')
   if (hudEl) {
     const setHudH = () => document.documentElement.style.setProperty('--ch-hud-h', hudEl.offsetHeight + 'px')
@@ -1166,18 +1175,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   if (state.map) state.map.onLocate(updateLocateInfo)
 
-  // Locate overlay toggle — visible only while a sender is isolated (see the
-  // hunt:isolate-sender handler above). Defaults on; hiding it only hides the
-  // rendered heatmap/markers/info-box, the estimate itself keeps computing.
-  let locateVisible = true
-  el('locate-toggle-btn').classList.add('active')
-  el('locate-toggle-btn').addEventListener('click', () => {
-    locateVisible = !locateVisible
-    el('locate-toggle-btn').classList.toggle('active', locateVisible)
-    if (state.map) state.map.setLocateVisible(locateVisible)
+  // Locate overlay toggle — a styled checkbox in the topbar controls. Unchecked
+  // by default (overlay off); ticking it shows the heatmap/markers/readout over
+  // the filtered set. The estimate keeps computing regardless (see huntmap
+  // drawLocate), so switching it on is instant.
+  const locateCb = el('locate-checkbox')
+  locateCb.checked = false
+  if (state.map) state.map.setLocateVisible(false)
+  locateCb.addEventListener('change', () => {
+    if (state.map) state.map.setLocateVisible(locateCb.checked)
   })
 
-  el('filter-btn').addEventListener('click', () => {
+  el('filter-pill').addEventListener('click', () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) {
@@ -1217,7 +1226,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // by the time this bubbles to document, so excluding the toggle here stops
   // it from immediately re-closing what it just opened).
   const dismissableSheets = [
-    { sheet: el('filter-sheet'), toggle: el('filter-btn') },
+    { sheet: el('filter-sheet'), toggle: el('filter-pill') },
     { sheet: el('settings-sheet'), toggle: el('settings-btn') },
     { sheet: el('target-sheet'), toggle: el('target-chip') },
   ]
@@ -1231,6 +1240,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (sheet.contains(e.target) || toggle.contains(e.target)) continue
       sheet.hidden = true
     }
+    syncPopoverTriggers()
   })
 
   // Retry location — re-starts the GPS watch (e.g. after the user grants the
@@ -1243,7 +1253,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Reflect the initial filter state on the button (inactive at default)
-  refreshFilterIndicator()
+  refreshFilterState()
   // Reflect persisted attenuator/manual-fix state on the settings button
   refreshSettingsIndicator()
   refreshSplash()

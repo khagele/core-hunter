@@ -1,7 +1,7 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade } from './signal.js'
 import { getConfig } from './config.js'
-import { locate } from './locate.js'
+import { locate, toLocatePoints } from './locate.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
@@ -82,7 +82,7 @@ function patchRendererZoomTransform() {
 }
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
   patchRendererZoomTransform()
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
@@ -113,8 +113,13 @@ export function createHuntMap(containerId) {
   // locate's overlay/markers last so they sit on top of everything.
   const hexLayer = L.layerGroup().addTo(map)
   const pointLayer = L.layerGroup().addTo(map)
+  // highlightLayer sits above the points so the receptions-log playhead ring
+  // (setHighlight) is always visible; it is a separate, non-interactive layer
+  // so it repaints without a full point rebuild and survives popupOpen guards.
+  const highlightLayer = L.layerGroup().addTo(map)
   const locateLayer = L.layerGroup().addTo(map)
   let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null, locateVisible = true
+  let highlightId = null, onMarkerFocusCb = null
 
   let popupOpen = false
   map.on('popupopen', () => { popupOpen = true })
@@ -165,21 +170,22 @@ export function createHuntMap(containerId) {
     draw()
   }
 
-  // Single-hunter "locate": when a sender is isolated, estimate its position
-  // from this hunter's own receptions of it (RSSI-weighted centroid + density
-  // heatmap, same pure algorithm as the multi-hunter web version — see
-  // locate.js). No API/DB read here, just whatever this hunter has walked past.
+  // "Locate": estimate a transmitter's position from this hunter's own
+  // receptions (RSSI-weighted centroid + density heatmap, same pure algorithm
+  // as the multi-hunter web version — see locate.js). Runs over the already-
+  // filtered record set the map plots, so it answers "where does the traffic
+  // I'm currently looking at come from" — a selected target or any narrowing
+  // filter (packet-type, window, …). No API/DB read here, just what this hunter
+  // has walked past.
   function drawLocate(records) {
     locateLayer.clearLayers()
-    if (!lastIsolatedId) { if (onLocateCb) onLocateCb(null); return }
-    const points = records
-      .filter((r) => r.sender_id === lastIsolatedId && r.lat != null && r.lon != null)
-      .map((r) => ({ lat: r.lat, lon: r.lon, rssi: r.rssi }))
+    const points = toLocatePoints(records)
     // Always compute — the FAB toggle (setLocateVisible) only hides the
     // rendered overlay/readout, so the estimate is instantly available with
-    // no recompute lag whenever the user switches it back on.
-    const res = locate(points)
-    if (!locateVisible) { if (onLocateCb) onLocateCb(null); return }
+    // no recompute lag whenever the user switches it back on. No points yet
+    // (nothing plotted) → no readout rather than a meaningless "0 points".
+    const res = points.length ? locate(points) : null
+    if (!locateVisible || !res) { if (onLocateCb) onLocateCb(null); return }
     if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
     if (res.centroid) {
       L.marker([res.centroid.lat, res.centroid.lon], {
@@ -236,10 +242,30 @@ export function createHuntMap(containerId) {
         const m = L.circleMarker([r.lat, r.lon], pointStyle(r, nowMs))
         m.bindPopup(popupHtml(r, lastIsolatedId))
         m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
+        // Tapping a point rolls the receptions-log playhead to it (#130).
+        m.on('click', () => { if (onMarkerFocusCb) onMarkerFocusCb(r) })
         m.addTo(pointLayer)
       }
     }
+    applyHighlight()
   }
+
+  // applyHighlight rings the marker for the reception on the log playhead
+  // (highlightId). Rebuilt on every draw and on setHighlight so it tracks both
+  // new data and playhead moves. Non-interactive, so it never eats point taps.
+  function applyHighlight() {
+    highlightLayer.clearLayers()
+    if (highlightId == null) return
+    const r = lastRecords.find((x) => String(x.id) === String(highlightId))
+    if (!r || r.lat == null || r.lon == null) return
+    L.circleMarker([r.lat, r.lon], { radius: 11, color: cssVar('--ch-accent'), weight: 3, fill: false, interactive: false }).addTo(highlightLayer)
+  }
+  // setHighlight rings a reception by id (or clears it with null). Cheap — it
+  // only rebuilds the highlight layer, not the whole point layer.
+  function setHighlight(id) { highlightId = id == null ? null : id; applyHighlight() }
+  // onMarkerFocus registers the callback fired with the record when a point is
+  // tapped, so app.js can roll the receptions-log playhead to it.
+  function onMarkerFocus(cb) { onMarkerFocusCb = cb }
   function setPosition(lat, lon) {
     lastPos = [lat, lon]
     here = here || L.circleMarker([lat, lon], { radius: 6, color: cssVar('--ch-accent'), weight: 2 }).addTo(map)
@@ -290,7 +316,7 @@ export function createHuntMap(containerId) {
     wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
 }
 
 function popupHtml(r, isolatedId) {

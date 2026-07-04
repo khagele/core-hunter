@@ -1,32 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { feedItems, relTime, senderList, topSenders } from '../feed.js'
+import { relTime, senderList, topSenders } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
-
-describe('feedItems', () => {
-  it('keeps only channel_name + advert_pubkey + discover_pubkey kinds', () => {
-    const out = feedItems([
-      rec({ sender_kind: 'channel_name', sender_id: 'A' }),
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'B' }),
-      rec({ sender_kind: 'discover_pubkey', sender_id: 'C' }),
-      rec({ sender_kind: 'direct_hash', sender_id: 'D' }),
-      rec({ sender_kind: null, sender_id: null }),
-    ], {})
-    expect(out.map((r) => r.sender_id)).toEqual(['A', 'B', 'C'])
-  })
-  it('keeps ignored senders visible so the ⊘ button can toggle them back off', () => {
-    const out = feedItems([rec({ sender_id: 'AA' }), rec({ sender_id: 'bb' })], { ignore: new Set(['aa']) })
-    expect(out.map((r) => r.sender_id).sort()).toEqual(['AA', 'bb'])
-  })
-  it('sorts newest-first and respects limit', () => {
-    const out = feedItems([
-      rec({ sender_id: 'old', rx_at: '2026-06-29T10:00:00Z' }),
-      rec({ sender_id: 'new', rx_at: '2026-06-29T10:05:00Z' }),
-      rec({ sender_id: 'mid', rx_at: '2026-06-29T10:02:00Z' }),
-    ], { limit: 2 })
-    expect(out.map((r) => r.sender_id)).toEqual(['new', 'mid'])
-  })
-})
 
 describe('senderList', () => {
   it('keeps channel_name + advert_pubkey + discover_pubkey + relay kinds, drops the rest', () => {
