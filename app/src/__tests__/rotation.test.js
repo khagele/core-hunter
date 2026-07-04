@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -43,5 +43,19 @@ describe('nextCompassState', () => {
   })
   it('heading mode taps back to following, north up', () => {
     expect(nextCompassState({ follow: true, heading: true })).toEqual({ follow: true, heading: false })
+  })
+})
+
+describe('compassGlyph', () => {
+  it('maps each compass state to its glyph', () => {
+    expect(compassGlyph({ follow: false, heading: false })).toBe('static')
+    expect(compassGlyph({ follow: true, heading: false })).toBe('following')
+    expect(compassGlyph({ follow: true, heading: true })).toBe('heading')
+  })
+  it('the previewed (next-state) glyph is what a tap produces, never static', () => {
+    // The FAB icon previews the NEXT state, not the current one.
+    expect(compassGlyph(nextCompassState({ follow: false, heading: false }))).toBe('following') // panned → tap recenters
+    expect(compassGlyph(nextCompassState({ follow: true, heading: false }))).toBe('heading')   // centered → tap enables compass
+    expect(compassGlyph(nextCompassState({ follow: true, heading: true }))).toBe('following')  // compass → tap back to north-up
   })
 })
