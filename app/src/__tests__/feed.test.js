@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -83,5 +83,20 @@ describe('relTime', () => {
     expect(relTime(null, now)).toBe('—')
     expect(relTime(undefined, now)).toBe('—')
     expect(relTime('not-a-date', now)).toBe('—')
+  })
+})
+
+describe('targetParts', () => {
+  it('shows name as primary and the id prefix as secondary when both exist', () => {
+    expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'a1b2c3' }))
+      .toEqual({ primary: 'Repeater-Zuid', secondary: 'a1b2c3' })
+  })
+  it('shows the bare id when there is no name (no secondary)', () => {
+    expect(targetParts({ sender_label: null, sender_id: 'a1b2c3' }))
+      .toEqual({ primary: 'a1b2c3', secondary: '' })
+  })
+  it('falls back to a dash when neither is present', () => {
+    expect(targetParts({ sender_label: null, sender_id: null }))
+      .toEqual({ primary: '—', secondary: '' })
   })
 })

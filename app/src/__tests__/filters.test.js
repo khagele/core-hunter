@@ -6,11 +6,21 @@ const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true,
 const now = Date.parse('2026-06-29T10:05:00Z')
 
 describe('makeFilter', () => {
-  it('isolates a sender by exact id (case-insensitive)', () => {
-    const f = makeFilter({ sender: { id: '4A' }, types: null, windowMs: null, directOnly: false, ignore: null })
+  it('targets a single sender by exact id (case-insensitive)', () => {
+    const f = makeFilter({ sender: { ids: ['4A'] }, types: null, windowMs: null, directOnly: false, ignore: null })
     expect(f(rec(), now)).toBe(true)
     expect(f(rec({ sender_id: 'bb' }), now)).toBe(false)
     expect(f(rec({ sender_id: null }), now)).toBe(false)
+  })
+  it('targets the union (OR) of multiple sender ids', () => {
+    const f = makeFilter({ sender: { ids: ['4a', 'bb'] }, types: null, windowMs: null, directOnly: false, ignore: null })
+    expect(f(rec({ sender_id: '4a' }), now)).toBe(true)
+    expect(f(rec({ sender_id: 'BB' }), now)).toBe(true)
+    expect(f(rec({ sender_id: 'cc' }), now)).toBe(false)
+  })
+  it('an empty target set does not filter by sender', () => {
+    const f = makeFilter({ sender: { ids: [] }, types: null, windowMs: null, directOnly: false, ignore: null })
+    expect(f(rec({ sender_id: 'anything' }), now)).toBe(true)
   })
   it('ignores listed sender ids', () => {
     const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: false, ignore: new Set(['4a']) })
@@ -38,8 +48,8 @@ describe('isFilterActive', () => {
   it('the default filter is not active', () => {
     expect(isFilterActive({ ...DEFAULT_FILTER })).toBe(false)
   })
-  it('an isolated sender is active', () => {
-    expect(isFilterActive({ ...DEFAULT_FILTER, sender: { key: 'aa', keylen: 1 } })).toBe(true)
+  it('a target selection is active', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, sender: { ids: ['aa'] } })).toBe(true)
   })
   it('the default filter has direct-only off', () => {
     expect(DEFAULT_FILTER.directOnly).toBe(false)

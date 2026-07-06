@@ -93,6 +93,9 @@ const state = {
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
   filter: { ...DEFAULT_FILTER },
+  // Resolved name per selected target id (lowercased) — for the chip label
+  // when exactly one target is selected (#178).
+  senderLabels: new Map(),
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
   hasFix: false,
   bleError: false,
@@ -317,13 +320,14 @@ async function drawOnce() {
     enrichNames(rows)
     const fn = makeFilter({ ...state.filter, ignore: state.ignore })
     const filteredRows = rows.filter((r) => fn(r, now))
+    const selected = selectedSet()
     if (state.map) {
-      state.map.render(filteredRows, state.filter.sender && state.filter.sender.id)
+      state.map.render(filteredRows, selected)
     }
     // Receptions log (#130): filtered = the plotted set (one-to-one with the
     // map); all = every captured reception. The toggle is log-only.
     if (state.rxLog) state.rxLog.render(filteredRows, rows, now)
-    if (state.targetList) state.targetList.render(rows, state.ignore, now, state.filter.sender && state.filter.sender.id)
+    if (state.targetList) state.targetList.render(rows, state.ignore, now, selected)
   } catch (_) {
     // silent — render failure must not crash the loop
   }
@@ -685,15 +689,15 @@ function buildTargetSheet() {
 
   state.targetList = createTargetList(el('ts-list'), {
     pinnedEl: el('ts-pinned'),
-    onSelect: (id) => {
-      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id } }))
-      sheet.hidden = true
+    // Whole-row tap toggles this sender in the target set; the sheet stays open
+    // so several can be picked in a row (#178).
+    onSelect: (id, label) => {
+      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, toggle: true } }))
     },
   })
 
   el('ts-clear').addEventListener('click', () => {
     document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: null }))
-    sheet.hidden = true
   })
 
   el('ts-close').addEventListener('click', () => { sheet.hidden = true })
@@ -1062,16 +1066,44 @@ function cycleLayer() {
 // Isolate-sender event
 // ---------------------------------------------------------------------------
 
-document.addEventListener('hunt:isolate-sender', (e) => {
-  state.filter.sender = (e.detail && e.detail.id) ? { id: e.detail.id } : null
+// The current target selection as a Set of lowercased ids (or null when empty),
+// passed to the map + target list for membership highlighting (#178).
+function selectedSet() {
+  return state.filter.sender ? new Set(state.filter.sender.ids) : null
+}
+
+// Chip label reflects the target selection: none → prompt, one → the sender's
+// name, more → a count (#178).
+function updateTargetChip() {
   const chip = el('target-chip')
-  if (e.detail && e.detail.id) {
-    chip.textContent = '⌖ ' + String(e.detail.id).slice(0, 12)
-    chip.classList.add('active')
-  } else {
+  const ids = state.filter.sender ? state.filter.sender.ids : []
+  if (ids.length === 0) {
     chip.textContent = 'Select target'
     chip.classList.remove('active')
+    return
   }
+  chip.classList.add('active')
+  chip.textContent = ids.length === 1
+    ? '⌖ ' + (state.senderLabels.get(ids[0]) || ids[0])
+    : '⌖ ' + ids.length + ' targets'
+}
+
+// Target selection is a live union of sender ids (#178). detail = null clears;
+// { id, toggle:true } adds/removes one (the checkbox rows); { id } replaces the
+// whole selection with just that sender (a map popup's "Isolate sender").
+document.addEventListener('hunt:isolate-sender', (e) => {
+  const d = e.detail
+  const ids = new Set(state.filter.sender ? state.filter.sender.ids : [])
+  if (!d) {
+    ids.clear()
+  } else {
+    const key = String(d.id).toLowerCase()
+    if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
+    if (d.toggle) { ids.has(key) ? ids.delete(key) : ids.add(key) }
+    else { ids.clear(); ids.add(key) }
+  }
+  state.filter.sender = ids.size ? { ids: [...ids] } : null
+  updateTargetChip()
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender
   refreshFilterState()
