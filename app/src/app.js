@@ -30,7 +30,7 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState } from './auth.js'
@@ -97,6 +97,8 @@ const state = {
   hasFix: false,
   bleError: false,
   gpsError: false,
+  // Onboarding re-opened via the "?" button after the splash has been dismissed.
+  showOnboarding: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -217,36 +219,32 @@ function updateLocateInfo(res) {
     + disclaimer
 }
 
-// Rotating splash tips: the pinned disclaimer plus one cycling hunting tip,
-// shown only while waiting for a GPS fix so the wait is spent learning to hunt.
-let tipTimer = null
-let tipIdx = 0
-function showTip() { el('splash-tip').textContent = pickTip(SPLASH_TIPS, tipIdx) }
-function startTipRotation() {
+// Populates the static onboarding copy (name, basics, callouts, disclaimer)
+// from splash.js. Called once at startup, before the splash is first shown.
+function initSplashContent() {
+  el('splash-name').textContent = APP_NAME
   el('splash-disclaimer').textContent = SPLASH_DISCLAIMER
-  if (tipTimer) return // already rotating
-  showTip()
-  tipTimer = setInterval(() => { tipIdx++; showTip() }, 6000)
-}
-function stopTipRotation() {
-  if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
+  el('co-controls').textContent = SPLASH_CALLOUTS.controls
+  el('co-menu').textContent = SPLASH_CALLOUTS.menu
+  el('co-fabs').textContent = SPLASH_CALLOUTS.fabs
+  el('splash-basics').replaceChildren(
+    ...SPLASH_BASICS.map((b) => { const li = document.createElement('li'); li.textContent = b; return li })
+  )
 }
 
-// Splash: shown until the first GPS fix, per splashState(). Call wherever
-// hasFix/connected/bleError/gpsError changes.
+// Splash / onboarding overlay: shown until the first GPS fix (per splashState),
+// and re-openable afterwards via the "?" button (state.showOnboarding). Call
+// wherever hasFix/connected/bleError/gpsError/showOnboarding changes.
 function refreshSplash() {
   const s = splashState(state)
-  el('splash').hidden = s === 'hidden'
-  // Tips + disclaimer on every visible splash screen (intro, waiting-gps,
-  // ble-error, gps-error) — previously waiting-gps only, so the position
-  // disclaimer and hunting tips went unseen if the user never got that far.
-  const showTips = s !== 'hidden'
-  el('splash-disclaimer').hidden = !showTips
-  el('splash-tip').hidden = !showTips
-  if (showTips) startTipRotation()
-  else stopTipRotation()
-  if (s === 'hidden') return
-  el('splash-status').textContent = SPLASH_COPY[s]
+  const reopened = state.showOnboarding && s === 'hidden'
+  const visible = s !== 'hidden' || reopened
+  el('splash').hidden = !visible
+  document.body.classList.toggle('onboarding', visible)
+  // Reopened mid-hunt: already connected, so no Connect CTA — show Close instead.
+  el('splash-close').hidden = !reopened
+  if (reopened) el('connect-btn').hidden = true
+  el('splash-status').textContent = reopened ? '' : (SPLASH_COPY[s] || '')
   el('splash-retry-gps').hidden = s !== 'gps-error'
 }
 
@@ -467,8 +465,6 @@ function setHuntingChrome(connected) {
   el('connect-btn').hidden = connected
   el('hud-bar').hidden = connected
   el('hud-bar-labels').hidden = connected
-  // HUD height changed → recompute --ch-hud-h (drives the #splash bottom inset)
-  window.dispatchEvent(new Event('resize'))
 }
 
 // Fetch the current account/session and reflect it in the Account section:
@@ -793,7 +789,7 @@ function buildSettingsSheet() {
         Light theme
       </label>
       <div class="ss-version-row">
-        <span class="ss-version">core-hunter v${__APP_VERSION__}</span>
+        <span class="ss-version">${APP_NAME} v${__APP_VERSION__}</span>
         <span id="ss-update-status" class="ss-update-status" hidden></span>
         <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
       </div>
@@ -1118,15 +1114,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
 
-  // Publish the real HUD height as --ch-hud-h so #splash sits above it
-  const hudEl = document.getElementById('hud')
-  if (hudEl) {
-    const setHudH = () => document.documentElement.style.setProperty('--ch-hud-h', hudEl.offsetHeight + 'px')
-    setHudH()
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(setHudH).observe(hudEl)
-    window.addEventListener('resize', setHudH)
-  }
-
   // Build sheets (static HTML injected once)
   buildFilterSheet()
   buildSettingsSheet()
@@ -1136,6 +1123,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('connect-btn').addEventListener('click', () => {
     if (!state.connected) { state.wakeLock.enable(); connectAll() }
   })
+
+  // Onboarding: the "?" button re-opens the splash overlay; Close dismisses it.
+  el('onboarding-btn').addEventListener('click', () => { state.showOnboarding = true; refreshSplash() })
+  el('splash-close').addEventListener('click', () => { state.showOnboarding = false; refreshSplash() })
 
   el('discover-btn').addEventListener('click', sendDiscover)
 
@@ -1254,6 +1245,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshFilterState()
   // Reflect persisted attenuator/manual-fix state on the settings button
   refreshSettingsIndicator()
+  initSplashContent()
   refreshSplash()
 
   // Start background loops

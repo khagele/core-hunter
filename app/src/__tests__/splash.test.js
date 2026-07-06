@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from '../splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from '../splash.js'
 
 describe('splashState', () => {
   it('hides once a GPS fix has been acquired, regardless of other state', () => {
@@ -20,41 +20,36 @@ describe('splashState', () => {
 })
 
 describe('SPLASH_COPY', () => {
-  it('has copy for every non-hidden state', () => {
+  it('has a copy entry for every non-hidden state', () => {
     expect(Object.keys(SPLASH_COPY).sort()).toEqual(['ble-error', 'gps-error', 'intro', 'waiting-gps'])
   })
 })
 
 describe('SPLASH_DISCLAIMER', () => {
-  it('states position is inferred from radio signal, not GPS tracking (AGENTS.md §7)', () => {
-    expect(SPLASH_DISCLAIMER).toMatch(/inferred/i)
+  it('states we map radio signal, not GPS tracking of the target (AGENTS.md §7)', () => {
     expect(SPLASH_DISCLAIMER).toMatch(/RSSI|signal/i)
-    expect(SPLASH_DISCLAIMER).toMatch(/not GPS/i)
+    expect(SPLASH_DISCLAIMER).toMatch(/not GPS tracking/i)
+    expect(SPLASH_DISCLAIMER).toMatch(/where you were/i)
   })
 })
 
-describe('SPLASH_TIPS', () => {
+describe('SPLASH_BASICS', () => {
   it('is a non-empty list of non-empty strings', () => {
-    expect(Array.isArray(SPLASH_TIPS)).toBe(true)
-    expect(SPLASH_TIPS.length).toBeGreaterThan(0)
-    for (const t of SPLASH_TIPS) expect(typeof t === 'string' && t.length > 0).toBe(true)
+    expect(Array.isArray(SPLASH_BASICS)).toBe(true)
+    expect(SPLASH_BASICS.length).toBeGreaterThan(0)
+    for (const b of SPLASH_BASICS) expect(typeof b === 'string' && b.length > 0).toBe(true)
   })
 })
 
-describe('pickTip', () => {
-  const tips = ['a', 'b', 'c']
-  it('returns the tip at the given index', () => {
-    expect(pickTip(tips, 0)).toBe('a')
-    expect(pickTip(tips, 2)).toBe('c')
+describe('SPLASH_CALLOUTS', () => {
+  it('has copy for the three control groups', () => {
+    expect(Object.keys(SPLASH_CALLOUTS).sort()).toEqual(['controls', 'fabs', 'menu'])
+    for (const k of Object.keys(SPLASH_CALLOUTS)) expect(SPLASH_CALLOUTS[k].length).toBeGreaterThan(0)
   })
-  it('wraps around past the end (cyclic rotation)', () => {
-    expect(pickTip(tips, 3)).toBe('a')
-    expect(pickTip(tips, 4)).toBe('b')
-  })
-  it('handles negative indices with a safe modulo', () => {
-    expect(pickTip(tips, -1)).toBe('c')
-  })
-  it('returns empty string for an empty list', () => {
-    expect(pickTip([], 0)).toBe('')
+})
+
+describe('APP_NAME', () => {
+  it('is the Mesh-Hunter display name', () => {
+    expect(APP_NAME).toBe('Mesh-Hunter')
   })
 })
