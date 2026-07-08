@@ -16,6 +16,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
+/* #f-hunter is a <select multiple> (#196); without a fixed height it defaults
+   to a ~4-row listbox that wrecks the single-line toolbar. Scrolls internally
+   when more options are selected/hovered than fit. */
+#f-hunter { height:28px; min-width:120px; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 .cs-layer-toggle { display:inline-flex; gap:8px; }
 .cs-layer-toggle[hidden] { display:none; }

@@ -487,7 +487,9 @@ urlstate.register({ key: 'mode', get: () => mode,
 urlstate.register({ key: 'lat', get: () => map.getCenter().lat.toFixed(5), set: () => {} })
 urlstate.register({ key: 'lon', get: () => map.getCenter().lng.toFixed(5), set: () => {} })
 urlstate.register({ key: 'z', get: () => String(map.getZoom()), set: () => {} })
-urlstate.bindControl('hunter', 'f-hunter')
+// f-hunter is a <select multiple> (#196); .value only returns the first
+// selection, so it can't use bindControl -- register directly, mirroring 'types'.
+urlstate.register({ key: 'hunter', get: () => window.currentHunters(), set: (v) => window.setHunters(v) })
 urlstate.bindControl('sender', 'f-sender', { events: ['change', 'input'] })
 urlstate.bindControl('from', 'f-from')
 urlstate.bindControl('to', 'f-to')

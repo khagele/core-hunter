@@ -1,5 +1,5 @@
 import { API_BASE } from './config.js'
-import { initial, save } from './urlstate.js'
+import { save } from './urlstate.js'
 
 // Same packet-type set as the app's filter sheet (parity, #142).
 const FILTER_PACKET_TYPES = [
@@ -41,7 +41,7 @@ function defaultToday() {
 // Reset every filter to its default: all hunters, no sender, timeframe = today.
 // Exposed for the "Clear" button; map.js handles the layer/locate/redraw side.
 function resetFilters() {
-  document.getElementById('f-hunter').value = ''
+  for (const o of document.getElementById('f-hunter').options) o.selected = false
   const s = document.getElementById('f-sender'); s.value = ''; s.title = ''
   const now = new Date()
   document.getElementById('f-from').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0))
@@ -58,12 +58,15 @@ async function loadHunters() {
       o.textContent = hunterOptionLabel(h)
       sel.appendChild(o)
     }
-    // The shared/saved hunter can only be applied once its option exists (options
-    // arrive async). Re-assert it and fire change so the view + URL pick it up.
-    const want = initial('hunter', '')
-    if (want && sel.value !== want) {
-      sel.value = want
-      if (sel.value === want) sel.dispatchEvent(new Event('change'))
+    // The shared/saved selection can only be applied once its options exist
+    // (options arrive async). Re-assert it and fire change so the view + URL pick it
+    // up. Read the value captured before load (index.html), not initial('hunter')
+    // here -- by now urlstate.load()'s save() has already normalized the URL/storage
+    // to the still-empty live selection and would return '' (#196).
+    const want = new Set(String(window.__initialHunter || '').split(',').filter(Boolean))
+    if (want.size) {
+      for (const o of sel.options) o.selected = want.has(o.value)
+      sel.dispatchEvent(new Event('change'))
     }
   } catch (_) {}
 }
@@ -97,8 +100,17 @@ if (typeof document !== 'undefined') {
 
   window.__resetFilters = resetFilters
 
+  // getters/setter used by currentFilters and the urlstate registration (map.js);
+  // a native <select multiple> mirrors the f-types chip pattern above.
+  window.currentHunters = () =>
+    [...document.getElementById('f-hunter').selectedOptions].map((o) => o.value).join(',')
+  window.setHunters = (v) => {
+    const want = new Set(String(v || '').split(',').filter(Boolean))
+    for (const o of document.getElementById('f-hunter').options) o.selected = want.has(o.value)
+  }
+
   window.currentFilters = () => ({
-    hunter: document.getElementById('f-hunter').value,
+    hunter: window.currentHunters(),
     sender: document.getElementById('f-sender').value.trim(),
     from: localToUTC(document.getElementById('f-from').value),
     to: localToUTC(document.getElementById('f-to').value),
@@ -106,6 +118,11 @@ if (typeof document !== 'undefined') {
     // direct-only = zero-hop (#138 semantics); empty string drops the param
     hops: document.getElementById('f-direct').checked ? '0' : '',
   })
+
+  // f-hunter is registered directly with urlstate (map.js), not via bindControl
+  // (a <select multiple>'s .value only returns the first selection) -- persist
+  // it explicitly here, same as the f-types chips do.
+  document.getElementById('f-hunter').addEventListener('change', save)
 
   for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
     const el = document.getElementById(id)

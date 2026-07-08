@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script type="module">
     import { VERSION } from './version.js'
+    import { initial } from './urlstate.js'
+    // Captured here (before filters.js/map.js even start fetching) because
+    // #f-hunter's options arrive async from /api/hunters; by the time that
+    // resolves, map.js's synchronous urlstate.load()->save() has already
+    // normalized the URL/storage to the (still-empty) live selection, which
+    // would otherwise wipe out a shared/saved hunter selection (#196).
+    window.__initialHunter = initial('hunter', '')
     const v = '?v=' + VERSION
     const css = document.createElement('link')
     css.rel = 'stylesheet'; css.href = 'style.css' + v
@@ -38,7 +45,7 @@
 </head>
 <body>
   <header id="bar">
-    <select id="f-hunter"><option value="">All hunters</option></select>
+    <select id="f-hunter" multiple title="All hunters if none selected"></select>
     <input id="f-sender" type="text" placeholder="sender id (prefix)" />
     <label>from <input id="f-from" type="datetime-local" /></label>
     <label>to <input id="f-to" type="datetime-local" /></label>
