@@ -30,6 +30,7 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
+import { isGpsStalled } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
@@ -102,6 +103,9 @@ const state = {
   gpsError: false,
   // Onboarding re-opened via the "?" button after the splash has been dismissed.
   showOnboarding: false,
+  // Epoch ms of the most recent GPS fix, used to detect a stalled watch on
+  // return from background (#198). Distinct from lastPacketAt (BLE receptions).
+  lastGpsFixAt: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -256,11 +260,33 @@ function refreshSplash() {
 function startGpsWatch() {
   state.gps.start(
     (fix) => {
+      state.lastGpsFixAt = Date.now()
       if (state.map) state.map.setPosition(fix.lat, fix.lon)
       if (!state.hasFix) { state.hasFix = true; refreshSplash() }
     },
     () => { state.gpsError = true; refreshSplash() }
   )
+}
+
+// ---------------------------------------------------------------------------
+// Hide / return-to-visible (#198)
+// ---------------------------------------------------------------------------
+// Screen-off and backgrounding aren't preventable on the web (#144) — this is
+// best-effort hardening: minimise the gap on return rather than eliminate it.
+// BLE reconnect needs no extra wiring here: transport.js's gattserverdisconnected
+// listener and backoff loop already run independent of page visibility.
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') return
+  if (!state.connected) return
+
+  const now = Date.now()
+  if (isGpsStalled(state.lastGpsFixAt, now)) {
+    state.gps.stop()
+    startGpsWatch()
+  }
+  drawOnce()      // don't wait up to 1s for the next render tick
+  drainOnce()     // don't wait up to 5s for the next drain tick
 }
 
 // ---------------------------------------------------------------------------
@@ -343,7 +369,10 @@ async function renderTick() {
 // Rows are NEVER removed from IndexedDB. If publish fails, the row stays
 // unpublished and will be retried on the next drain.
 
-async function drainLoop() {
+// The actual publish pass, split out from drainLoop's timer-rescheduling so it
+// can also be called on demand (e.g. right after returning from background)
+// without spawning a second parallel setTimeout chain alongside the running one.
+async function drainOnce() {
   if (state.publisher && state.publisher.connected() && state.rxPubkey) {
     try {
       const rows = await state.queue.takeAll()
@@ -363,6 +392,10 @@ async function drainLoop() {
       // queue read failed — retry next cycle
     }
   }
+}
+
+async function drainLoop() {
+  await drainOnce()
   setTimeout(drainLoop, 5000)
 }
 
@@ -1326,6 +1359,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshSettingsIndicator()
   initSplashContent()
   refreshSplash()
+
+  // Resume capture promptly on return from background (#198)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 
   // Start background loops
   renderTick()
