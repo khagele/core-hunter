@@ -28,7 +28,14 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 
 func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
-	f := store.Filter{From: q.Get("from"), To: q.Get("to"), Hunter: q.Get("hunter"), Sender: q.Get("sender")}
+	f := store.Filter{From: q.Get("from"), To: q.Get("to"), Sender: q.Get("sender")}
+	// ?hunter=a,b,c filters to any of a comma-separated set of hunter_pubkeys /
+	// pseudonym tokens (#196); a single value keeps today's exact-match behaviour.
+	if hs := strings.TrimSpace(q.Get("hunter")); hs != "" {
+		for _, h := range strings.Split(hs, ",") {
+			if h = strings.TrimSpace(h); h != "" { f.Hunter = append(f.Hunter, h) }
+		}
+	}
 	if minLat, minLon, maxLat, maxLon, ok := ParseBBox(q.Get("bbox")); ok {
 		f.HasBBox, f.MinLat, f.MinLon, f.MaxLat, f.MaxLon = true, minLat, minLon, maxLat, maxLon
 	}
@@ -51,14 +58,18 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 }
 
 // resolveHunterFilter maps a pseudonym token to the real pubkey and blanks a raw
-// pubkey that isn't the sub-member caller's own companion (prevents cross-hunter targeting).
+// pubkey that isn't the sub-member caller's own companion (prevents cross-hunter
+// targeting). Multi-hunter select is member+ only (#196) -- guests/sub-members
+// (the only callers of this function) collapse to just the first token.
 func resolveHunterFilter(f store.Filter, a Auth, ps auth.Pseudonyms) store.Filter {
-	if f.Hunter == "" { return f }
-	if n, ok := auth.ParsePseudonym(f.Hunter); ok {
-		f.Hunter = pubkeyForOrdinal(ps, n) // "" if none -> query returns nothing
-	} else if !a.ownsCompanion(strings.ToLower(f.Hunter)) {
-		f.Hunter = ""
+	if len(f.Hunter) == 0 { return f }
+	h := f.Hunter[0]
+	if n, ok := auth.ParsePseudonym(h); ok {
+		h = pubkeyForOrdinal(ps, n) // "" if none -> query returns nothing
+	} else if !a.ownsCompanion(strings.ToLower(h)) {
+		h = ""
 	}
+	if h == "" { f.Hunter = nil } else { f.Hunter = []string{h} }
 	return f
 }
 
@@ -115,12 +126,12 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		var pts []store.Point
 		var trunc bool
 		switch {
-		case f.Hunter != "" && a.ownsCompanion(strings.ToLower(f.Hunter)):
+		case len(f.Hunter) == 1 && a.ownsCompanion(strings.ToLower(f.Hunter[0])):
 			// filtered to one of the caller's own companions: exact, full history
 			p, t, err := s.QueryPoints(f)
 			if err != nil { http.Error(w, err.Error(), 500); return }
 			pts, trunc = p, t
-		case f.Hunter != "":
+		case len(f.Hunter) == 1:
 			// filtered to a specific OTHER hunter: windowed+capped, pseudonymised
 			p, t, err := s.QueryPoints(applyGuestWindowCap(f, time.Now()))
 			if err != nil { http.Error(w, err.Error(), 500); return }
@@ -139,7 +150,7 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			ownTrunc := false
 			for c := range own {
 				of := f
-				of.Hunter, of.From, of.Limit = c, "", 0
+				of.Hunter, of.From, of.Limit = []string{c}, "", 0
 				rows, t, err := s.QueryPoints(of)
 				if err != nil { http.Error(w, err.Error(), 500); return }
 				ownRows = append(ownRows, rows...)
@@ -159,7 +170,7 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			ord, _ := s.HunterOrdinals()
 			ps = auth.Pseudonyms(ord)
 			f = resolveHunterFilter(f, a, ps)
-			ownFull := f.Hunter != "" && a.ownsCompanion(strings.ToLower(f.Hunter))
+			ownFull := len(f.Hunter) == 1 && a.ownsCompanion(strings.ToLower(f.Hunter[0]))
 			if !ownFull {
 				if z > guestHeatmapMaxZ { z = guestHeatmapMaxZ }
 				if f.From == "" || f.From < windowFrom(time.Now()) { f.From = windowFrom(time.Now()) }

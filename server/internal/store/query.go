@@ -8,8 +8,11 @@ import (
 type Filter struct {
 	MinLat, MinLon, MaxLat, MaxLon float64
 	HasBBox                        bool
-	From, To, Hunter, Sender       string
+	From, To, Sender               string
 	Ignore                         []string
+	// Hunter filters on hunter_pubkey; multiple values match any of them
+	// (SQL IN); empty = no filter (#196).
+	Hunter []string
 	// Hops filters on the exact hop count; nil = no hop filter. Direct-only
 	// (zero-hop) is Hops=0 — is_direct is not usable as a query condition, it
 	// is also true for relayed last-hop measurements (#138/#142).
@@ -60,8 +63,12 @@ func (f Filter) where() (string, []any) {
 	if f.To != "" {
 		conds = append(conds, "rx_at <= ?"); args = append(args, f.To)
 	}
-	if f.Hunter != "" {
-		conds = append(conds, "hunter_pubkey = ?"); args = append(args, f.Hunter)
+	if len(f.Hunter) > 0 {
+		ph := make([]string, len(f.Hunter))
+		for i, h := range f.Hunter {
+			ph[i] = "?"; args = append(args, h)
+		}
+		conds = append(conds, "hunter_pubkey IN ("+strings.Join(ph, ",")+")")
 	}
 	if f.Sender != "" {
 		conds = append(conds, "sender_id IS NOT NULL AND lower(sender_id) LIKE ?"); args = append(args, strings.ToLower(f.Sender)+"%")

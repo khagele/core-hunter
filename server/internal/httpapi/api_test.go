@@ -37,6 +37,19 @@ func TestFilterFromHopsAndTypes(t *testing.T) {
 	if f.Hops != nil { t.Fatalf("junk hops must be ignored: %v", *f.Hops) }
 }
 
+// TestFilterFromHunterCommaSeparated: ?hunter= accepts a comma-separated list
+// (#196), trims whitespace, and an absent/empty param means no filter.
+func TestFilterFromHunterCommaSeparated(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/points?hunter=aaaa,%20bbbb", nil)
+	f := filterFrom(r, nil)
+	if len(f.Hunter) != 2 || f.Hunter[0] != "aaaa" || f.Hunter[1] != "bbbb" {
+		t.Fatalf("comma-separated hunter not parsed: %+v", f.Hunter)
+	}
+	r = httptest.NewRequest(http.MethodGet, "/api/points", nil)
+	f = filterFrom(r, nil)
+	if len(f.Hunter) != 0 { t.Fatalf("absent hunter must not filter: %+v", f.Hunter) }
+}
+
 func TestVersionEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, nil, nil, nil, nil)
@@ -210,6 +223,51 @@ func TestPointsHunterOwnFullHistory(t *testing.T) {
 	}
 	if sawOldOther {
 		t.Fatalf("other hunter's old (>24h) row must still be dropped by the 24h window, got points: %v", pts)
+	}
+}
+
+// TestPointsMemberMultiHunterFilter: a member+ caller passing ?hunter=a,b
+// (#196) gets rows from both hunters and nothing else.
+func TestPointsMemberMultiHunterFilter(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	st.Insert(store.Reception{HunterPubkey: "cccc", HunterName: "Carol", RxAt: time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339), RSSI: -90, Raw: "00", IsDirect: true, Lat: 53.0, Lon: 6.0, SenderID: "s4", PacketType: "Response"})
+	out := doPointsQ(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?hunter=aaaa,bbbb")
+	pts := out["points"].([]any)
+	if len(pts) != 3 { t.Fatalf("multi-hunter filter should return aaaa+bbbb's 3 rows, got %d", len(pts)) }
+	for _, p := range pts {
+		hp := p.(map[string]any)["hunter_pubkey"]
+		if hp == "cccc" { t.Fatalf("hunter outside the filtered set leaked: %v", hp) }
+	}
+}
+
+// TestPointsGuestMultiHunterCollapsesToFirst: a guest/sub-member is limited to
+// a single hunter filter (#196 decision: multi-select is member+ only); a
+// multi-value ?hunter= collapses to just the first token.
+func TestPointsGuestMultiHunterCollapsesToFirst(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	single := doPointsQ(t, st, Guest(), "?hunter=h1")
+	multi := doPointsQ(t, st, Guest(), "?hunter=h1,h2")
+	singlePts := single["points"].([]any)
+	multiPts := multi["points"].([]any)
+	if len(multiPts) != len(singlePts) {
+		t.Fatalf("multi-hunter guest filter should collapse to the first token: got %d rows, want %d (== ?hunter=h1)", len(multiPts), len(singlePts))
+	}
+	for _, p := range multiPts {
+		if p.(map[string]any)["hunter_pubkey"] != "h1" { t.Fatalf("collapsed filter should only return h1 rows: %v", p) }
+	}
+}
+
+// TestHeatmapMemberMultiHunterFilter: member+ heatmap respects a
+// comma-separated hunter list the same way /api/points does (#196).
+func TestHeatmapMemberMultiHunterFilter(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	st.Insert(store.Reception{HunterPubkey: "cccc", HunterName: "Carol", RxAt: time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339), RSSI: -90, Raw: "00", IsDirect: true, Lat: 53.0, Lon: 6.0, SenderID: "s4", PacketType: "Response"})
+	out := doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=5&hunter=aaaa,bbbb")
+	if got := heatmapTotal(t, out); got != 3 {
+		t.Fatalf("multi-hunter heatmap should count aaaa+bbbb's 3 rows, got %d", got)
 	}
 }
 

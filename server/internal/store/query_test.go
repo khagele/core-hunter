@@ -21,7 +21,7 @@ func hops0() *int { z := 0; return &z }
 func TestQueryPointsZeroHopAndFilters(t *testing.T) {
 	st := seed(t); defer st.Close()
 	// bbox covering both hunters, sender prefix 'a', hunter h1
-	got, _, err := st.QueryPoints(Filter{HasBBox: true, MinLat: 50, MinLon: 3, MaxLat: 53, MaxLon: 6, Hunter: "h1", Sender: "a", Limit: 10})
+	got, _, err := st.QueryPoints(Filter{HasBBox: true, MinLat: 50, MinLon: 3, MaxLat: 53, MaxLon: 6, Hunter: []string{"h1"}, Sender: "a", Limit: 10})
 	if err != nil { t.Fatalf("query: %v", err) }
 	if len(got) != 1 || got[0].SenderID != "aa" || got[0].HunterPubkey != "h1" {
 		t.Fatalf("hunter+sender filter wrong: %+v", got)
@@ -36,6 +36,20 @@ func TestQueryPointsZeroHopAndFilters(t *testing.T) {
 	direct, _, _ := st.QueryPoints(Filter{Hops: hops0(), Limit: 100})
 	if len(direct) != 3 { t.Fatalf("hops=0 filter wrong: %+v", direct) }
 	for _, p := range direct { if p.SenderID == "cc" { t.Fatal("relayed row leaked through hops=0") } }
+}
+
+// TestQueryPointsMultipleHunters: Hunter with 2+ pubkeys matches an IN-set
+// (#196); an empty Hunter slice still means no filter.
+func TestQueryPointsMultipleHunters(t *testing.T) {
+	st := seed(t); defer st.Close()
+	got, _, err := st.QueryPoints(Filter{Hunter: []string{"h1", "h2"}, Limit: 100})
+	if err != nil { t.Fatalf("query: %v", err) }
+	if len(got) != 4 { t.Fatalf("multi-hunter filter wrong: got %d, want 4 (all h1+h2 rows)", len(got)) }
+	for _, p := range got {
+		if p.HunterPubkey != "h1" && p.HunterPubkey != "h2" { t.Fatalf("unexpected hunter leaked: %+v", p) }
+	}
+	one, _, _ := st.QueryPoints(Filter{Hunter: []string{"h2"}, Limit: 100})
+	if len(one) != 1 || one[0].HunterPubkey != "h2" { t.Fatalf("single-element slice must behave like exact match: %+v", one) }
 }
 
 func TestQueryPointsPacketTypeFilter(t *testing.T) {
