@@ -99,10 +99,29 @@ test('Locate button fetches /api/points and renders the overlay', async ({ page 
   await expect(page.locator('#locate-info')).toContainText('strongest -52 dBm')
 })
 
-test('Locate with no sender shows the prompt and does not fetch', async ({ page }) => {
+// #176: no sender required any more -- Locate runs on whatever the current
+// filters match (falls back to the generic "too few points" empty state
+// instead of a sender-specific prompt when that's empty).
+test('Locate with no sender still fetches, using the current filters', async ({ page }) => {
+  const req = page.waitForRequest((r) => r.url().includes('/api/points') && !r.url().includes('sender='))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/')
   await page.click('#locate-toggle')
-  await expect(page.locator('#locate-info')).toContainText('Enter a sender ID')
+  await req
+  await expect(page.locator('#locate-info')).toContainText('too few to estimate')
+})
+
+test('Locate with no sender but a type filter locates over that filtered set (#176)', async ({ page }) => {
+  const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('types=Advert') && !r.url().includes('sender='))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
+  await page.goto('/')
+  await page.click('button.f-chip[data-type="Advert"]')
+  await page.click('#locate-toggle')
+  await req
+
+  await expect(page.locator('.lc-centroid')).toHaveCount(1)
+  await expect(page.locator('.lc-strongest')).toHaveCount(1)
+  await expect(page.locator('#locate-info')).toContainText('strongest -52 dBm')
 })
 
 test('Locate surfaces a fetch error instead of crashing the poll loop', async ({ page }) => {

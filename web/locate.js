@@ -12,6 +12,18 @@ const R_EARTH_M = 6371000
 // legitimate on-top readings (-50..-56 dBm seen in the field) unclipped.
 const RSSI_CAP = -55
 
+// Map raw /api/points records (mixed senders/hunters -- whatever the current
+// filter set matched, #176) to the {lat, lon, rssi} shape locate() needs,
+// dropping any record missing a GPS fix. Mirrors the app's toLocatePoints.
+export function toLocatePoints(records) {
+  const points = []
+  for (const r of records) {
+    if (r.lat == null || r.lon == null) continue
+    points.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+  }
+  return points
+}
+
 // Great-circle distance in metres between two {lat, lon}.
 export function haversineM(a, b) {
   const toRad = (d) => (d * Math.PI) / 180
