@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>core-hunter — analysis</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Installable (#194): manifest only, no service worker (no offline caching --
+       this is an online analysis tool that always needs the server/API). -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0b0e14" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <script type="module">
     import { VERSION } from './version.js'
     const v = '?v=' + VERSION
