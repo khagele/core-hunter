@@ -188,6 +188,44 @@ themeBtn.addEventListener('click', () => {
 map.on('moveend zoomend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
 window.__mapZoom = () => map.getZoom() // test hook
+window.__mapCenter = () => map.getCenter() // test hook
+
+// Snap the map to the selected hunter(s) (#195). Bbox-less: fitBounds must
+// reflect the hunter's full matching dataset, not just the current viewport.
+let hunterMarker = null
+function hunterSnapQs() {
+  const p = new URLSearchParams()
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  return p.toString()
+}
+async function snapToHunter() {
+  const n = (window.currentHunters ? window.currentHunters() : '').split(',').filter(Boolean).length
+  if (n === 0) {
+    // "All hunters": drop the marker, no forced viewport change.
+    if (hunterMarker) { map.removeLayer(hunterMarker); hunterMarker = null }
+    return
+  }
+  let fetched
+  try {
+    fetched = await fetchPointsPaged(hunterSnapQs(), { maxTotal: 25000 })
+  } catch (_) { return }
+  if (hunterMarker) { map.removeLayer(hunterMarker); hunterMarker = null }
+  const points = fetched.points
+  if (!points.length) return
+  map.fitBounds(points.map((p) => [p.lat, p.lon]))
+  if (n === 1) {
+    // Newest-first (server default order, #142) -> points[0] is the latest
+    // reception. This is the hunter phone's own GPS, not a target position.
+    const latest = points[0]
+    hunterMarker = L.marker([latest.lat, latest.lon])
+      .bindPopup(`${esc(latest.hunter_name)} · hunter's own GPS (not a target position)`)
+      .addTo(map)
+  }
+  // #196 pairing decision: >1 hunter selected -> fit to the union, no marker.
+}
+document.getElementById('f-hunter').addEventListener('change', snapToHunter)
+window.__hunterMarkerLatLng = () => (hunterMarker ? hunterMarker.getLatLng() : null) // test hook
 
 // Paint a normalized density grid to a canvas and return a Leaflet image overlay.
 function heatmapOverlay(hm) {

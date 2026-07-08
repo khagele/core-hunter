@@ -100,6 +100,70 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
   await expect(page.locator('#f-hunter')).toHaveValues(['abc123def456', 'def456abc123'])
 })
 
+test('snap to hunter: selecting a single hunter fits bounds and drops a marker at the latest position (#195)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [{ hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 2 }] },
+  }))
+  await page.route('**/api/points*', (r) => {
+    const u = new URL(r.request().url())
+    if (u.searchParams.get('hunter') === 'abc123def456') {
+      return r.fulfill({ json: { points: [
+        // newest first (server order) -> this one is the "latest position"
+        { lat: 55.5, lon: 8.5, rssi: -70, snr: -3, hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', rx_at: '2026-07-08T12:00:00Z' },
+        { lat: 55.4, lon: 8.4, rssi: -80, snr: -5, hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', rx_at: '2026-07-08T11:00:00Z' },
+      ] } })
+    }
+    return r.fulfill({ json: { points: [] } })
+  })
+  await page.goto('/')
+
+  await page.locator('#f-hunter').selectOption(['abc123def456'])
+  await expect(async () => {
+    const marker = await page.evaluate(() => window.__hunterMarkerLatLng())
+    expect(marker).toBeTruthy()
+    expect(marker.lat).toBeCloseTo(55.5, 3)
+    expect(marker.lng).toBeCloseTo(8.5, 3)
+  }).toPass()
+  // Map actually moved to the far-away fixture cluster (was centered near 51,4).
+  expect(await page.evaluate(() => window.__mapCenter().lat)).toBeGreaterThan(54)
+
+  // Deselecting back to "All hunters" removes the marker without moving the map.
+  const centerBefore = await page.evaluate(() => window.__mapCenter())
+  await page.locator('#f-hunter').selectOption([])
+  await expect(async () => {
+    expect(await page.evaluate(() => window.__hunterMarkerLatLng())).toBeNull()
+  }).toPass()
+  const centerAfter = await page.evaluate(() => window.__mapCenter())
+  expect(centerAfter.lat).toBeCloseTo(centerBefore.lat, 5)
+  expect(centerAfter.lng).toBeCloseTo(centerBefore.lng, 5)
+})
+
+test('snap to hunter: selecting multiple hunters fits to the union without a marker (#195, pairs with #196)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [
+      { hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 1 },
+      { hunter_pubkey: 'def456abc123', hunter_name: 'ON7BE', count: 1 },
+    ] },
+  }))
+  await page.route('**/api/points*', (r) => {
+    const u = new URL(r.request().url())
+    if (u.searchParams.get('hunter') === 'abc123def456,def456abc123') {
+      return r.fulfill({ json: { points: [
+        { lat: 55.5, lon: 8.5, rssi: -70, snr: -3, hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', rx_at: '2026-07-08T12:00:00Z' },
+        { lat: 55.6, lon: 8.6, rssi: -75, snr: -4, hunter_pubkey: 'def456abc123', hunter_name: 'ON7BE', rx_at: '2026-07-08T11:30:00Z' },
+      ] } })
+    }
+    return r.fulfill({ json: { points: [] } })
+  })
+  await page.goto('/')
+
+  await page.locator('#f-hunter').selectOption(['abc123def456', 'def456abc123'])
+  await expect(async () => {
+    expect(await page.evaluate(() => window.__mapCenter().lat)).toBeGreaterThan(54)
+  }).toPass()
+  expect(await page.evaluate(() => window.__hunterMarkerLatLng())).toBeNull()
+})
+
 test('hunter dropdown shows pseudonymised labels for guests', async ({ page }) => {
   // Guests get server-issued pseudonyms (hunter_pubkey="h<N>", hunter_name="Hunter <N>");
   // override this spec's default member mock just for this test.
