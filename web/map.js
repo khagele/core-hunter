@@ -1,7 +1,7 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
-import { locate } from './locate.js'
+import { locate, toLocatePoints } from './locate.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
@@ -150,8 +150,10 @@ function applyRole(me) {
   refresh()
   // Deferred ?locate=1 restore (Task 5): fires once, the first time the
   // resolved role can see Locate — including a guest who logs in as a member
-  // later, since applyRole() re-runs on login too.
-  if (wantLocate && !locateRestored && canSeeLocate(currentRole) && window.currentFilters().sender) {
+  // later, since applyRole() re-runs on login too. No longer requires a
+  // sender (#176) -- Locate now also runs on other filters, or even the bare
+  // default view, same as the app.
+  if (wantLocate && !locateRestored && canSeeLocate(currentRole)) {
     locateRestored = true
     activateLocate()
   }
@@ -190,15 +192,19 @@ window.__refresh = refresh
 window.__mapZoom = () => map.getZoom() // test hook
 window.__mapCenter = () => map.getCenter() // test hook
 
-// Snap the map to the selected hunter(s) (#195). Bbox-less: fitBounds must
-// reflect the hunter's full matching dataset, not just the current viewport.
-let hunterMarker = null
-function hunterSnapQs() {
+// Bbox-less query carrying every active filter (hunter/sender/time/types/hops)
+// as-is -- for anything that needs the full matching dataset rather than
+// what's currently panned into view. Shared by the hunter snap (#195) and the
+// no-sender Locate path (#176).
+function filtersQs() {
   const p = new URLSearchParams()
   const f = (window.currentFilters && window.currentFilters()) || {}
   for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
   return p.toString()
 }
+
+// Snap the map to the selected hunter(s) (#195).
+let hunterMarker = null
 async function snapToHunter() {
   const n = (window.currentHunters ? window.currentHunters() : '').split(',').filter(Boolean).length
   if (n === 0) {
@@ -208,7 +214,7 @@ async function snapToHunter() {
   }
   let fetched
   try {
-    fetched = await fetchPointsPaged(hunterSnapQs(), { maxTotal: 25000 })
+    fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
   } catch (_) { return }
   if (hunterMarker) { map.removeLayer(hunterMarker); hunterMarker = null }
   const points = fetched.points
@@ -320,8 +326,10 @@ function locateLegendHtml() {
 // Test hook: render a supplied point array (no API needed).
 window.__locateRender = (points, senderId = 'efef79') => { locateActive = true; renderLocate(points, senderId) }
 
-// Build a sender-scoped, bbox-less query for /api/points (all of this node's
+// Sender-scoped, bbox-less query for /api/points (all of this node's
 // receptions across all hunters, full timeframe — not viewport-limited).
+// Deliberately narrower than filtersQs(): when a sender is set, Locate keeps
+// today's exact behaviour (sender + time only), unchanged by #176.
 function locateQs(f) {
   const p = new URLSearchParams({ sender: f.sender })
   if (f.from) p.set('from', f.from)
@@ -329,22 +337,17 @@ function locateQs(f) {
   return p.toString()
 }
 
+// Locate estimates over a selected sender, or -- when no sender is set --
+// whatever else narrows the view (hunter/types/hops/time), mirroring the
+// app's filtered-record Locate (#176, follow-up to #128).
 async function drawLocate() {
   const f = (window.currentFilters && window.currentFilters()) || {}
   const box = document.getElementById('locate-info')
-  if (!f.sender) {
-    locateLayer.clearLayers()
-    if (locateActive) {
-      box.hidden = false
-      box.innerHTML = '<h4>Locate</h4><div class="lc-muted">Enter a sender ID to locate.</div>'
-    }
-    return
-  }
   let fetched
   try {
     // Full paged dataset: the solver input and the drawn dots are the same
     // array, so the centroid always sits within the visible cloud.
-    fetched = await fetchPointsPaged(locateQs(f), { maxTotal: 100000 })
+    fetched = await fetchPointsPaged(f.sender ? locateQs(f) : filtersQs(), { maxTotal: 100000 })
   } catch (e) {
     if (locateActive) {
       box.hidden = false
@@ -352,19 +355,23 @@ async function drawLocate() {
     }
     return
   }
-  const points = fetched.points.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
-  // When a CoreScope layer is shown, count that node's CoreScope sightings too —
-  // resilient (a failed source just contributes nothing).
-  const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
-  const hk = encodeURIComponent(f.sender)
-  const extra = []
-  if (canSeeObserverPoints(currentRole)) {
-    if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
-    if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
-  }
-  if (extra.length) {
-    const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
-    for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
+  const points = toLocatePoints(fetched.points)
+  // CoreScope observer-points are keyed on a single heard_key -- they only
+  // make sense to merge in when locating one specific sender (#176).
+  if (f.sender) {
+    // When a CoreScope layer is shown, count that node's CoreScope sightings too —
+    // resilient (a failed source just contributes nothing).
+    const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
+    const hk = encodeURIComponent(f.sender)
+    const extra = []
+    if (canSeeObserverPoints(currentRole)) {
+      if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
+      if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+    }
+    if (extra.length) {
+      const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
+      for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
+    }
   }
   renderLocate(points, f.sender)
 }
