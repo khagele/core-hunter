@@ -730,15 +730,19 @@ function renderIgnoreList(listEl) {
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
-    <div class="settings-sheet-inner">
+    <div class="settings-page-inner">
       <div class="sheet-head">
-        <h2>Settings</h2>
+        <div class="ss-tabs" role="tablist" aria-label="Settings sections">
+          <button type="button" class="ss-tab active" id="ss-tab-settings" role="tab" aria-selected="true" aria-controls="ss-panel-settings">Settings</button>
+          <button type="button" class="ss-tab" id="ss-tab-about" role="tab" aria-selected="false" aria-controls="ss-panel-about">About</button>
+        </div>
         <button class="sheet-close" id="ss-close" aria-label="Close">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
             <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
           </svg>
         </button>
       </div>
+      <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
       <div class="ss-conn-section">
         <h3>Connection</h3>
         <dl class="ss-conn-status">
@@ -784,14 +788,43 @@ function buildSettingsSheet() {
           </select>
         </label>
       </div>
-      <label>
+      <label class="ss-theme-row">
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
       <div class="ss-version-row">
-        <span class="ss-version">${APP_NAME} v${__APP_VERSION__}</span>
         <span id="ss-update-status" class="ss-update-status" hidden></span>
         <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
+      </div>
+      </div>
+      <div class="ss-panel" id="ss-panel-about" role="tabpanel" aria-labelledby="ss-tab-about" hidden>
+        <div class="ss-about-brand">
+          <span class="ss-about-mark" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.6"/><path d="M10 10l5-3.2"/>
+            </svg>
+          </span>
+          <div>
+            <div class="ss-about-name">${APP_NAME}</div>
+            <div class="ss-version">v${__APP_VERSION__}</div>
+          </div>
+        </div>
+        <p class="ss-about-desc">Locate MeshCore nodes by their radio signal. Your logged receptions build a shared coverage map. Built by amateur-radio operators.</p>
+        <nav class="ss-about-links">
+          <a href="https://map.mesh-hunter.eu" target="_blank" rel="noopener">
+            <span class="ss-link-title">Shared coverage map</span>
+            <span class="ss-link-desc">Where MeshCore nodes have been heard, pooled from every hunter.</span>
+          </a>
+          <a href="https://mesh-hunter.eu" target="_blank" rel="noopener">
+            <span class="ss-link-title">mesh-hunter.eu</span>
+            <span class="ss-link-desc">The project — what it is and how to take part.</span>
+          </a>
+          <a href="https://github.com/efiten/core-hunter" target="_blank" rel="noopener">
+            <span class="ss-link-title">Source &amp; issues on GitHub</span>
+            <span class="ss-link-desc">Browse the code, report a bug, or request a feature.</span>
+          </a>
+        </nav>
+        <p class="ss-about-disclaimer">${SPLASH_DISCLAIMER}</p>
       </div>
     </div>`
 
@@ -843,6 +876,20 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+
+  // Tab switching (#203): one panel at a time. Both panels stay in the DOM so
+  // each keeps its own scroll position independently.
+  function selectTab(which) {
+    for (const k of ['settings', 'about']) {
+      const on = k === which
+      el('ss-tab-' + k).classList.toggle('active', on)
+      el('ss-tab-' + k).setAttribute('aria-selected', String(on))
+      el('ss-panel-' + k).classList.toggle('active', on)
+      el('ss-panel-' + k).hidden = !on
+    }
+  }
+  el('ss-tab-settings').addEventListener('click', () => selectTab('settings'))
+  el('ss-tab-about').addEventListener('click', () => selectTab('about'))
 
   let accFormMode = null // 'login' | 'register'
 

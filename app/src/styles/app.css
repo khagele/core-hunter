@@ -124,7 +124,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Overlay sheet header: title left, themed X close right */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.sheet-head h2 { margin: 0; }
 .sheet-close { border: none; background: transparent; color: var(--ch-muted); cursor: pointer;
   padding: 4px; display: flex; align-items: center; }
 .sheet-close:hover { color: var(--ch-text); }
@@ -135,9 +134,32 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }
 .fs-chip.active { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); }
-#settings-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%;
-  overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
-  border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }
+/* Settings is a full-page overlay with Settings/About tabs (#203). */
+#settings-sheet { position: fixed; inset: 0; z-index: 600;
+  background: var(--ch-surface); backdrop-filter: blur(12px); }
+.settings-page-inner { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+#settings-sheet .sheet-head { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 0;
+  align-items: center; border-bottom: 1px solid var(--ch-border); }
+.ss-tabs { display: flex; gap: 14px; }
+.ss-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
+  font-size: 15px; font-weight: 600; padding: 10px 2px; margin-bottom: -1px; cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.ss-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
+.ss-panel { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+/* About tab */
+.ss-about-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ss-about-mark { width: 46px; height: 46px; border-radius: 12px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--ch-accent) 16%, transparent); color: var(--ch-accent); }
+.ss-about-name { font-size: 20px; font-weight: 600; }
+.ss-about-desc { font-size: 14px; line-height: 1.55; color: var(--ch-muted); margin: 0 0 16px; }
+.ss-about-links { display: flex; flex-direction: column; gap: 14px; margin: 18px 0; }
+.ss-about-links a { display: block; text-decoration: none; }
+.ss-link-title { display: block; color: var(--ch-accent-2); font-size: 14px; font-weight: 600; }
+.ss-link-desc { display: block; color: var(--ch-muted); font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
+.ss-about-disclaimer { font-size: 12px; line-height: 1.5; color: var(--ch-muted);
+  border-top: 1px solid var(--ch-border); padding-top: 12px; margin: 0; }
+.ss-theme-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; }
 /* Target + filter dropdowns — top-anchored popovers under the topbar controls
    (not bottom sheets); scroll when their lists grow. */
 #filter-sheet, #target-sheet { position: fixed; top: 52px; left: 12px; width: 270px; max-width: calc(100vw - 24px);
