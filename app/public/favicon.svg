@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mesh-Hunter">
+  <rect width="512" height="512" fill="#0b0e14"/>
+  <polygon points="440,256 348,96 164,96 72,256 164,416 348,416" fill="none" stroke="#38e0a6" stroke-width="20" stroke-linejoin="round"/>
+  <g fill="none" stroke-width="24" stroke-linecap="round">
+    <path d="M316 192 A92 92 0 0 1 316 320" stroke="#40c8ff"/>
+    <path d="M196 192 A92 92 0 0 0 196 320" stroke="#40c8ff"/>
+  </g>
+  <circle cx="256" cy="256" r="40" fill="#ff453a"/>
+</svg>
