@@ -23,3 +23,21 @@ export function isGpsStalled(lastFixAt, now, thresholdMs = GPS_STALE_MS) {
 export function shouldShowPausedBanner(hiddenAt, visibleAt, minMs = BANNER_MIN_HIDDEN_MS) {
   return hiddenAt != null && (visibleAt - hiddenAt) >= minMs
 }
+
+// planResume decides what the return-to-visible handler should do. It keys off
+// `hiddenAt` (set only when we were connected at hide time), NOT the live
+// `connected` flag: during a BLE drop the transport is in its reconnect/backoff
+// loop so `connected` is false, yet the session is active and this is exactly
+// the case the resume path targets (#198). Coming back mid-backoff, we also
+// want to nudge the reconnect, since its backoff setTimeout was itself throttled
+// while backgrounded. Pure so the branch logic is unit-testable; the side
+// effects (nudge, gps restart, drain, banner) stay in app.js.
+export function planResume({ hiddenAt, connected, lastGpsFixAt, now }) {
+  if (hiddenAt == null) return { run: false, nudgeReconnect: false, restartGps: false, showBanner: false }
+  return {
+    run: true,
+    nudgeReconnect: !connected,
+    restartGps: isGpsStalled(lastGpsFixAt, now),
+    showBanner: shouldShowPausedBanner(hiddenAt, now),
+  }
+}

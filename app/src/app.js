@@ -30,7 +30,7 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
-import { isGpsStalled, shouldShowPausedBanner } from './lifecycle.js'
+import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
@@ -301,8 +301,9 @@ function startGpsWatch() {
 // ---------------------------------------------------------------------------
 // Screen-off and backgrounding aren't preventable on the web (#144) — this is
 // best-effort hardening: minimise the gap on return rather than eliminate it.
-// BLE reconnect needs no extra wiring here: transport.js's gattserverdisconnected
-// listener and backoff loop already run independent of page visibility.
+// The resume runs whenever a connected session was backgrounded (keyed on
+// hiddenAt), including while BLE is mid-reconnect (state.connected false) — that
+// drop-while-backgrounded case is the one this targets. See planResume.
 
 function onVisibilityChange() {
   if (document.visibilityState === 'hidden') {
@@ -311,16 +312,17 @@ function onVisibilityChange() {
   }
   const hiddenAt = state.hiddenAt
   state.hiddenAt = null
-  if (!state.connected) return
-
   const now = Date.now()
-  if (isGpsStalled(state.lastGpsFixAt, now)) {
-    state.gps.stop()
-    startGpsWatch()
-  }
+  const plan = planResume({ hiddenAt, connected: state.connected, lastGpsFixAt: state.lastGpsFixAt, now })
+  if (!plan.run) return
+
+  // BLE dropped while backgrounded → its backoff setTimeout was throttled; wake
+  // it so a reconnect is attempted now instead of waiting out the (up to 30s) delay.
+  if (plan.nudgeReconnect && state.transport && state.transport.nudgeReconnect) state.transport.nudgeReconnect()
+  if (plan.restartGps) { state.gps.stop(); startGpsWatch() }
   drawOnce()      // don't wait up to 1s for the next render tick
   drainOnce()     // don't wait up to 5s for the next drain tick
-  if (shouldShowPausedBanner(hiddenAt, now)) showPausedBanner(sinceLabel(now, hiddenAt))
+  if (plan.showBanner) showPausedBanner(sinceLabel(now, hiddenAt))
 }
 
 // ---------------------------------------------------------------------------
@@ -406,25 +408,33 @@ async function renderTick() {
 // The actual publish pass, split out from drainLoop's timer-rescheduling so it
 // can also be called on demand (e.g. right after returning from background)
 // without spawning a second parallel setTimeout chain alongside the running one.
+// In-flight guard: the on-demand drain (from onVisibilityChange) can otherwise
+// run concurrently with the periodic drainLoop, and since a row is only marked
+// published after publish() resolves, two overlapping passes could each publish
+// the same row (a redundant MQTT message — backend dedups on raw+rx_at).
+let draining = false
 async function drainOnce() {
-  if (state.publisher && state.publisher.connected() && state.rxPubkey) {
-    try {
-      const rows = await state.queue.takeAll()
-      let n = 0
-      for (const r of rows) {
-        if (state.published.has(r.id)) continue
-        try {
-          await state.publisher.publish(state.rxPubkey, r, state.name)
-          state.published.add(r.id)
-          n++
-        } catch (_) {
-          // publish failed — leave for next drain
-        }
+  if (draining) return
+  if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
+  draining = true
+  try {
+    const rows = await state.queue.takeAll()
+    let n = 0
+    for (const r of rows) {
+      if (state.published.has(r.id)) continue
+      try {
+        await state.publisher.publish(state.rxPubkey, r, state.name)
+        state.published.add(r.id)
+        n++
+      } catch (_) {
+        // publish failed — leave for next drain
       }
-      if (n > 0) console.debug('[drain] published', n, 'record(s)')
-    } catch (_) {
-      // queue read failed — retry next cycle
     }
+    if (n > 0) console.debug('[drain] published', n, 'record(s)')
+  } catch (_) {
+    // queue read failed — retry next cycle
+  } finally {
+    draining = false
   }
 }
 
