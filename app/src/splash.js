@@ -1,5 +1,7 @@
-// Cold-start splash: shown until the first GPS fix arrives, per AGENTS.md
-// (no coverage without a position, so hunting cannot start before that).
+// Cold-start splash / onboarding overlay: shown until the first GPS fix arrives,
+// per AGENTS.md (no coverage without a position, so hunting cannot start before
+// that). It doubles as the onboarding surface — a spotlight over the live
+// controls plus getting-started basics — and is re-openable via the "?" button.
 // splashState resolves the display state from the connection/GPS status.
 export function splashState({ hasFix, connected, bleError, gpsError }) {
   if (hasFix) return 'hidden'
@@ -9,36 +11,35 @@ export function splashState({ hasFix, connected, bleError, gpsError }) {
   return 'waiting-gps'
 }
 
+// User-facing product name (internal identifiers stay core-hunter).
+export const APP_NAME = 'Mesh-Hunter'
+
+// Status line under the glass panel. `intro` has none — the Connect button is
+// the call to action there.
 export const SPLASH_COPY = {
-  intro: 'Tap Connect below to start hunting.',
+  intro: '',
   'waiting-gps': 'Waiting for a GPS fix…',
   'gps-error': 'Could not get your location. Make sure location access is allowed for this site, then retry.',
-  'ble-error': 'Could not connect to the hunter. Tap Connect below to retry.',
+  'ble-error': 'Could not connect. Tap Connect to retry.',
 }
 
-// Pinned above the rotating tips: the AGENTS.md §7 position disclaimer. The
-// splash implies locating a transmitter ("walk toward the heat"), so it must
-// state that position is inferred from radio measurements, not GPS-tracked.
+// Pinned in the glass panel: the AGENTS.md §7 position statement. The splash
+// implies locating a transmitter, so it must state we map radio signal, not the
+// target's GPS — the map shows where the hunter was when it heard the target.
 export const SPLASH_DISCLAIMER =
-  'Position is inferred from radio signal (RSSI/SNR) via mesh topology — not GPS tracking of the target. The map shows where you were when you heard it.'
+  'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where you were when you heard it.'
 
-// Rotating hunting tips shown while waiting for a GPS fix, so the wait is spent
-// learning how to hunt. Cycled one at a time by app.js via pickTip().
-export const SPLASH_TIPS = [
-  '“Heat” is signal strength — stronger means closer. Drive toward the hottest points.',
-  "Encircle your target. One-sided sampling can't pin it — drive around it and get close.",
-  'Pick a specific sender from the target dropdown and the map isolates it.',
-  'Right on top of a strong transmitter? Switch on an attenuator (Settings) so the signal picture stays useful up close.',
-  'Only directly-heard (zero-hop) packets locate a transmitter — a relayed packet describes the last repeater, not the target.',
-  'Receptions are saved on your phone before upload — keep hunting without a network and it syncs later.',
-  'Mute known repeaters with the ignore-list, or they form false hotspots.',
+// Getting-started basics (was #143), shown as a short list in the glass panel.
+export const SPLASH_BASICS = [
+  'Open in Chrome or Bluefy (iOS)',
+  'Pair your companion — tap Connect',
+  'Listens only — nothing sent unless you Discover',
 ]
 
-// pickTip returns the tip at a cyclic index (wraps in both directions), or ''
-// for an empty list. Pure so the rotation is unit-testable; app.js holds the
-// running index and calls this on a timer.
-export function pickTip(tips, i) {
-  if (!tips || tips.length === 0) return ''
-  const n = tips.length
-  return tips[((i % n) + n) % n]
+// Spotlight callouts (was #119, updated for the #128 topbar). Each points at a
+// live control group revealed through the scrim.
+export const SPLASH_CALLOUTS = {
+  controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
+  menu: 'Settings and connection. Register your companion for analytics map access.',
+  fabs: 'Compass mode · send discover packet · hex or points',
 }
