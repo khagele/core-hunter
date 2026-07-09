@@ -6,16 +6,21 @@
   <title>core-hunter — analysis</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <!-- Installable (#194): manifest only, no service worker (no offline caching --
-       this is an online analysis tool that always needs the server/API). -->
-  <link rel="manifest" href="/manifest.webmanifest" />
+       this is an online analysis tool that always needs the server/API). The
+       manifest + touch icon are added in the module below with the same ?v=
+       buster as the other assets, so a future manifest/icon edit isn't served stale. -->
   <meta name="theme-color" content="#0b0e14" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
   <script type="module">
     import { VERSION } from './version.js'
     const v = '?v=' + VERSION
     const css = document.createElement('link')
     css.rel = 'stylesheet'; css.href = 'style.css' + v
     document.head.appendChild(css)
+    for (const [rel, href] of [['manifest', '/manifest.webmanifest'], ['apple-touch-icon', '/icon-192.png']]) {
+      const l = document.createElement('link')
+      l.rel = rel; l.href = href + v
+      document.head.appendChild(l)
+    }
     for (const src of ['filters.js', 'map.js']) {
       const s = document.createElement('script')
       s.type = 'module'; s.src = src + v

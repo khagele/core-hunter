@@ -245,7 +245,7 @@ test('assets are cache-busted with the version query', async ({ page }) => {
 
 test('the site is installable: manifest is linked and valid, no service worker (#194)', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest')
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /^\/manifest\.webmanifest\?v=/)
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1)
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#0b0e14')
 
