@@ -41,6 +41,17 @@ export function topSenders(records, { ignore, count = 3, nowMs } = {}) {
     .slice(0, count)
 }
 
+// targetParts splits a sender row into a primary label and a muted secondary
+// prefix for the target list (#178). The byte-prefix is always surfaced when a
+// name resolves, so duplicate names and different-length prefixes of the same
+// node are distinguishable; unresolved rows just show the bare prefix.
+export function targetParts(rec) {
+  const id = rec.sender_id != null ? String(rec.sender_id) : ''
+  const label = rec.sender_label ? String(rec.sender_label) : ''
+  if (label && id) return { primary: label, secondary: id }
+  return { primary: label || id || '—', secondary: '' }
+}
+
 export function relTime(rxAt, nowMs) {
   if (rxAt == null || Number.isNaN(Date.parse(rxAt))) return '—'
   const s = Math.max(0, Math.round((nowMs - Date.parse(rxAt)) / 1000))

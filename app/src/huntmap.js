@@ -127,7 +127,7 @@ export function createHuntMap(containerId) {
   // so it repaints without a full point rebuild and survives popupOpen guards.
   const highlightLayer = L.layerGroup().addTo(map)
   const locateLayer = L.layerGroup().addTo(map)
-  let mode = 'both', here = null, lastIsolatedId = null, onLocateCb = null, locateVisible = true
+  let mode = 'both', here = null, lastSelected = null, onLocateCb = null, locateVisible = true
   let highlightId = null, onMarkerFocusCb = null
 
   let popupOpen = false
@@ -173,9 +173,9 @@ export function createHuntMap(containerId) {
   map.on('zoomstart', () => { zooming = true })
   map.on('zoomend', () => { zooming = false; draw() })
 
-  function render(records, isolatedId) {
+  function render(records, selectedIds) {
     lastRecords = records
-    lastIsolatedId = isolatedId ?? null
+    lastSelected = selectedIds || null
     draw()
   }
 
@@ -249,7 +249,7 @@ export function createHuntMap(containerId) {
       for (const r of records) {
         if (r.lat == null || r.lon == null) continue
         const m = L.circleMarker([r.lat, r.lon], pointStyle(r, nowMs))
-        m.bindPopup(popupHtml(r, lastIsolatedId))
+        m.bindPopup(popupHtml(r, lastSelected))
         m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
         // Tapping a point rolls the receptions-log playhead to it (#130).
         m.on('click', () => { if (onMarkerFocusCb) onMarkerFocusCb(r) })
@@ -323,7 +323,7 @@ export function createHuntMap(containerId) {
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)
-    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec, lastIsolatedId)).openOn(map)
+    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec, lastSelected)).openOn(map)
     wireIsolate(popup, rec)
     wireIgnore(popup, rec)
   }
@@ -331,7 +331,7 @@ export function createHuntMap(containerId) {
   return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
 }
 
-function popupHtml(r, isolatedId) {
+function popupHtml(r, selectedIds) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   const kindLabel = { channel_name: 'name', advert_pubkey: 'node', discover_pubkey: 'node', relay: 'relay' }[r.sender_kind] || 'src'
   const senderLine = r.sender_id
@@ -339,8 +339,11 @@ function popupHtml(r, isolatedId) {
     : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
-  const isolated = r.sender_id && r.sender_id === isolatedId
-  const isolateBtn = isolated
+  // "Isolate" replaces the whole target selection with just this sender, so it
+  // only reads "Isolated ✓" when it is already the sole target (#178).
+  const key = r.sender_id ? String(r.sender_id).toLowerCase() : null
+  const sole = !!(key && selectedIds && selectedIds.size === 1 && selectedIds.has(key))
+  const isolateBtn = sole
     ? `<button class="ch-isolate active" disabled>Isolated ✓</button>`
     : `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
   return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
@@ -357,7 +360,7 @@ function wireIsolate(popup, r) {
   // doesn't rebuild while open (see draw()'s popupOpen guard) — without this,
   // clicking gives no visible response until the popup is closed and reopened.
   btn.onclick = () => {
-    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id } }))
+    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id, label: r.sender_label } }))
     btn.textContent = 'Isolated ✓'
     btn.disabled = true
     btn.classList.add('active')
