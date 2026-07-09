@@ -62,8 +62,42 @@ test('map starts in hex mode (#141), fetches /api/heatmap, and the toggle cycles
 
 test('hunter dropdown is populated from /api/hunters', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('#f-hunter option')).toHaveCount(2) // "All hunters" + the fetched one
+  // No "All hunters" placeholder (#196): empty selection already means all.
+  await expect(page.locator('#f-hunter option')).toHaveCount(1)
   await expect(page.locator('#f-hunter')).toContainText('ON8AR (42)')
+})
+
+test('hunter filter supports multi-select and reaches /api/heatmap as a comma-separated list (#196)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [
+      { hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 42 },
+      { hunter_pubkey: 'def456abc123', hunter_name: 'ON7BE', count: 7 },
+    ] },
+  }))
+  await page.goto('/') // cold default mode is hex (#141) -> /api/heatmap, not /api/points
+  await expect(page.locator('#f-hunter')).toHaveJSProperty('multiple', true)
+
+  const req = page.waitForRequest((r) => r.url().includes('/api/heatmap') && r.url().includes('hunter=abc123def456%2Cdef456abc123'))
+  await page.locator('#f-hunter').selectOption(['abc123def456', 'def456abc123'])
+  await req
+  await expect(page).toHaveURL(/hunter=abc123def456%2Cdef456abc123/)
+
+  // Deselecting back to nothing means "all hunters" again -- the param drops.
+  const reqAll = page.waitForRequest((r) => r.url().includes('/api/heatmap') && !r.url().includes('hunter='))
+  await page.locator('#f-hunter').selectOption([])
+  await reqAll
+  await expect(page).not.toHaveURL(/hunter=/)
+})
+
+test('a shared URL with multiple hunters restores the selection (#196)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [
+      { hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 42 },
+      { hunter_pubkey: 'def456abc123', hunter_name: 'ON7BE', count: 7 },
+    ] },
+  }))
+  await page.goto('/?hunter=abc123def456,def456abc123')
+  await expect(page.locator('#f-hunter')).toHaveValues(['abc123def456', 'def456abc123'])
 })
 
 test('hunter dropdown shows pseudonymised labels for guests', async ({ page }) => {
