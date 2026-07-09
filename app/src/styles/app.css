@@ -94,12 +94,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 9px; letter-spacing: .1em; color: var(--ch-muted); text-transform: uppercase;
   margin-top: -2px; }
 
-/* Connect button row */
-#hud-btn-row { display: flex; gap: 8px; margin-top: 4px; }
-#connect-btn { flex: 1; border: none; border-radius: 11px; padding: 11px;
-  background: var(--ch-accent); color: var(--ch-bg); font-weight: 650; font-size: 14px;
-  font-family: system-ui, sans-serif; cursor: pointer; }
-
 /* Settings button lives in the top bar (right of the status dots) */
 #topbar-right { display: flex; align-items: center; gap: 10px; }
 .topbar-btn { position: relative; border: none; background: transparent; color: var(--ch-text);
@@ -130,7 +124,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Overlay sheet header: title left, themed X close right */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.sheet-head h2 { margin: 0; }
 .sheet-close { border: none; background: transparent; color: var(--ch-muted); cursor: pointer;
   padding: 4px; display: flex; align-items: center; }
 .sheet-close:hover { color: var(--ch-text); }
@@ -141,9 +134,32 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }
 .fs-chip.active { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); }
-#settings-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 70%;
-  overflow: auto; padding: 16px; background: var(--ch-surface); backdrop-filter: blur(12px);
-  border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 600; }
+/* Settings is a full-page overlay with Settings/About tabs (#203). */
+#settings-sheet { position: fixed; inset: 0; z-index: 600;
+  background: var(--ch-surface); backdrop-filter: blur(12px); }
+.settings-page-inner { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+#settings-sheet .sheet-head { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 0;
+  align-items: center; border-bottom: 1px solid var(--ch-border); }
+.ss-tabs { display: flex; gap: 14px; }
+.ss-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
+  font-size: 15px; font-weight: 600; padding: 10px 2px; margin-bottom: -1px; cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.ss-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
+.ss-panel { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+/* About tab */
+.ss-about-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ss-about-mark { width: 46px; height: 46px; border-radius: 12px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--ch-accent) 16%, transparent); color: var(--ch-accent); }
+.ss-about-name { font-size: 20px; font-weight: 600; }
+.ss-about-desc { font-size: 14px; line-height: 1.55; color: var(--ch-muted); margin: 0 0 16px; }
+.ss-about-links { display: flex; flex-direction: column; gap: 14px; margin: 18px 0; }
+.ss-about-links a { display: block; text-decoration: none; }
+.ss-link-title { display: block; color: var(--ch-accent-2); font-size: 14px; font-weight: 600; }
+.ss-link-desc { display: block; color: var(--ch-muted); font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
+.ss-about-disclaimer { font-size: 12px; line-height: 1.5; color: var(--ch-muted);
+  border-top: 1px solid var(--ch-border); padding-top: 12px; margin: 0; }
+.ss-theme-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; }
 /* Target + filter dropdowns — top-anchored popovers under the topbar controls
    (not bottom sheets); scroll when their lists grow. */
 #filter-sheet, #target-sheet { position: fixed; top: 52px; left: 12px; width: 270px; max-width: calc(100vw - 24px);
@@ -195,21 +211,61 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }
 
-/* ---- Startup splash (until first GPS fix) ---- */
-#splash { position: fixed; top: 0; left: 0; right: 0; bottom: var(--ch-hud-h, 96px); z-index: 550;
-  background: var(--ch-bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.splash-inner { max-width: 420px; text-align: center; }
-.splash-inner h1 { margin: 0 0 8px; font-size: 26px; }
-.splash-blurb { color: var(--ch-muted); font-size: 15px; line-height: 1.5; }
-.splash-blurb a { color: var(--ch-accent-2); }
-.splash-status { margin-top: 18px; font-size: 14px; color: var(--ch-text); }
-/* Pinned position disclaimer + one rotating hunting tip (min-height avoids a
-   layout jump as tips of different length cycle in). */
-.splash-disclaimer { margin-top: 20px; font-size: 12px; line-height: 1.45; color: var(--ch-muted); }
-.splash-tip { margin-top: 12px; min-height: 3em; font-size: 14px; line-height: 1.45; color: var(--ch-text); }
+/* ---- Onboarding splash / spotlight overlay (until first GPS fix; re-openable via "?") ----
+   A translucent scrim dims the map; the live topbar + FAB controls are lifted
+   above it (body.onboarding) and ringed so they stand out, with callouts
+   pointing at each. A centre glass panel carries the name, getting-started
+   basics and the §7 disclaimer; the Connect CTA anchors the bottom. */
+#splash { position: fixed; inset: 0; z-index: 550;
+  background: color-mix(in srgb, var(--ch-bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+
+body.onboarding #topbar,
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn { z-index: 560; }
+body.onboarding #topbar-controls, body.onboarding #settings-btn,
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn {
+  box-shadow: 0 0 0 2px var(--ch-accent); }
+/* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
+   topbar) while the overlay is already showing. */
+body.onboarding #onboarding-btn { display: none; }
+
+.splash-callout { position: fixed; z-index: 561; max-width: 150px; padding: 8px 10px;
+  border: 1px solid var(--ch-accent); border-radius: 10px; background: var(--ch-surface);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: var(--ch-text); font-size: 11.5px; line-height: 1.4; }
+.co-controls { top: 58px; left: 12px; }
+.co-menu { top: 58px; right: 12px; }
+.co-fabs { right: 70px; bottom: 206px; max-width: 168px; }
+
+.splash-panel { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
+  width: min(300px, calc(100vw - 48px)); z-index: 561; padding: 18px; text-align: center;
+  background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 16px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.splash-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; }
+.splash-mark { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--ch-accent) 18%, transparent); color: var(--ch-accent); }
+.splash-panel h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.splash-basics { list-style: none; margin: 0; padding: 13px 0; text-align: left;
+  display: flex; flex-direction: column; gap: 9px;
+  border-top: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); }
+.splash-basics li { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; color: var(--ch-text); }
+.splash-basics li::before { content: ""; flex: 0 0 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--ch-accent); }
+.splash-disclaimer { margin: 12px 0 0; font-size: 11px; line-height: 1.5; color: var(--ch-muted); }
+.splash-status { margin: 10px 0 0; font-size: 13px; color: var(--ch-text); }
+.splash-status:empty { margin: 0; }
 .splash-retry { margin-top: 10px; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
+
+.splash-connect { position: fixed; left: 24px; right: 24px; bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+  z-index: 561; height: 48px; border: none; border-radius: 13px; cursor: pointer;
+  background: var(--ch-accent); color: var(--ch-bg); font-size: 14.5px; font-weight: 600;
+  font-family: system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.splash-connect[hidden] { display: none; }
+.splash-close { position: fixed; left: 50%; transform: translateX(-50%); z-index: 562;
+  bottom: calc(env(safe-area-inset-bottom, 16px) + 16px); width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--ch-border); background: var(--ch-surface); color: var(--ch-text); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Receptions log (#130) ----
    Frameless, log-style tail over the map (top-right). Newest at the bottom; a
