@@ -4,328 +4,211 @@ import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
 
+// Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
+// rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
+// a vector basemap (OpenFreeMap) unlocks 3D buildings/terrain in the follow-up
+// 3D phase. The createHuntMap(...) API is unchanged so app.js stays as-is.
+
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
-// Density-cloud ramp from the --ch-sig-* tokens (warm -> hot only), mirrors
-// web/map.js's heatStops/heatColor so the single-hunter locate overlay looks
-// the same as the multi-hunter one.
-function heatStops() {
-  const hex = (h) => { const s = h.replace('#', '').trim(); const n = s.length === 3 ? s.split('').map((x) => x + x).join('') : s; return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)] }
-  return ['--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
+// OpenFreeMap hosted vector styles (key-free); both use the "openmaptiles"
+// vector source. --ch-basemap ('dark'|'light') is the app's theme hint.
+const STYLES = {
+  dark: 'https://tiles.openfreemap.org/styles/dark',
+  light: 'https://tiles.openfreemap.org/styles/positron',
 }
-function heatColor(v, stops) {
-  const t = Math.max(0, Math.min(1, v)) * (stops.length - 1)
-  const i = Math.min(stops.length - 2, Math.floor(t))
-  const f = t - i
-  const a = stops[i], b = stops[i + 1]
-  return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f))
-}
-// Paint a normalized density grid to a canvas and return a Leaflet image overlay.
-function heatmapOverlay(hm) {
-  const { grid, rows, cols, bounds } = hm
-  const canvas = document.createElement('canvas')
-  canvas.width = cols; canvas.height = rows
-  const ctx = canvas.getContext('2d')
-  const img = ctx.createImageData(cols, rows)
-  const stops = heatStops()
-  const FLOOR = 0.12
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const v = grid[r * cols + c]
-      const y = rows - 1 - r
-      const idx = (y * cols + c) * 4
-      const [cr, cg, cb] = heatColor(v, stops)
-      img.data[idx] = cr; img.data[idx + 1] = cg; img.data[idx + 2] = cb
-      img.data[idx + 3] = v < FLOOR ? 0 : Math.round(210 * (v - FLOOR) / (1 - FLOOR))
-    }
-  }
-  ctx.putImageData(img, 0, 0)
-  return L.imageOverlay(canvas.toDataURL(), [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]],
-    { opacity: 0.7, interactive: false })
-}
-
-// leaflet-rotate (0.2.8, latest) overrides L.Renderer._updateTransform and its
-// own source carries an unresolved "@FIXME: layer drifts on map.setZoom() (eg.
-// zoom during animation)": with `rotate: true` the vector/marker panes are
-// re-transformed on every zoom-animation/pinch frame against a corrupted
-// anchor, so points and hexes drift visibly off the basemap until the fingers
-// release (#167). Tiles stay correct because GridLayer keeps its own per-level
-// origin and transforms with `origin × scale − map._getNewPixelOrigin()` — so
-// give the renderer the exact same math. Two things matter:
-//  1. the container content is drawn relative to _bounds.min under the pixel
-//     origin that was current when _update() computed those bounds — and the
-//     map's stored pixel origin has ALREADY moved to the destination zoom by
-//     the time _updateTransform fires, so that origin must be snapshotted in
-//     _update() (the plugin instead re-derives the anchor via its
-//     rotation-aware layerPointToLatLng, which bakes stale rotate-pane
-//     offsets into it — that is the drift);
-//  2. the target frame is the plugin's rotation-aware _getNewPixelOrigin,
-//     the same one the tiles use, so vectors and tiles cannot diverge.
-// Remove when fixed upstream.
-function patchRendererZoomTransform() {
-  if (typeof L === 'undefined' || !L.Renderer || L.Renderer.prototype._chZoomDriftPatched) return
-  const prevUpdate = L.Renderer.prototype._update
-  const prevTransform = L.Renderer.prototype._updateTransform
-  L.Renderer.prototype._update = function () {
-    const r = prevUpdate.apply(this, arguments)
-    if (this._map && this._map._rotate) this._chPixelOrigin = this._map.getPixelOrigin()
-    return r
-  }
-  L.Renderer.prototype._updateTransform = function (center, zoom) {
-    if (!this._map._rotate) return prevTransform.apply(this, arguments)
-    const scale = this._map.getZoomScale(zoom, this._zoom)
-    const offset = this._bounds.min.add(this._chPixelOrigin || this._map.getPixelOrigin())
-      .multiplyBy(scale)
-      .subtract(this._map._getNewPixelOrigin(center, zoom))
-    L.DomUtil.setTransform(this._container, offset, scale)
-  }
-  L.Renderer.prototype._chZoomDriftPatched = true
-}
+const EMPTY = { type: 'FeatureCollection', features: [] }
+const fc = (features) => ({ type: 'FeatureCollection', features })
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
-  patchRendererZoomTransform()
+  if (typeof maplibregl === 'undefined') {
+    return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
+  }
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
-  // Plot offset = calibration + attenuator added back. Attenuator is set at
-  // runtime (settings), so the offset is computed per render, not captured once.
+  // Plot offset = calibration + attenuator added back (display-only, per tick).
   let attenuatorDb = 0
   let timeWindowMs = null
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
-  // rotate/touchRotate come from the leaflet-rotate plugin (#116): real map
-  // rotation on device heading plus a two-finger rotate gesture. Without the
-  // plugin (CDN failure) the options are inert and the map stays north-up.
-  const map = L.map(containerId, { zoomControl: false, rotate: true, touchRotate: true, rotateControl: false }).setView([51, 4], 14)
-  const TILES = {
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  }
-  let base = null
-  let trailLayer = null
-  function applyBasemap() {
-    const which = cssVar('--ch-basemap') || 'dark'
-    if (base) map.removeLayer(base)
-    // CARTO's raster basemaps serve native tiles up to z20; maxZoom was capped
-    // at 19, one level short of what the tiles actually support.
-    base = L.tileLayer(TILES[which] || TILES.dark, { maxZoom: 20 }).addTo(map)
-    // Re-theme the route trail on light/dark switch (applyBasemap runs then).
-    if (trailLayer) trailLayer.setStyle({ color: cssVar('--ch-muted') })
-  }
-  applyBasemap()
-  // Session route trail (#148): the hunter's own GPS track. Added first so it
-  // sits at the bottom of the overlays — visually subordinate to the signal
-  // points/hex. It is the HUNTER's path, not the target's (position disclaimer).
-  trailLayer = L.polyline([], { color: cssVar('--ch-muted'), weight: 3, opacity: 0.5, interactive: false }).addTo(map)
-  let trail = []
-  // Layer add-order is z-order (later = on top) — hex first so individual
-  // points always render above it and stay clickable in 'both' mode, and
-  // locate's overlay/markers last so they sit on top of everything.
-  const hexLayer = L.layerGroup().addTo(map)
-  const pointLayer = L.layerGroup().addTo(map)
-  // highlightLayer sits above the points so the receptions-log playhead ring
-  // (setHighlight) is always visible; it is a separate, non-interactive layer
-  // so it repaints without a full point rebuild and survives popupOpen guards.
-  const highlightLayer = L.layerGroup().addTo(map)
-  const locateLayer = L.layerGroup().addTo(map)
-  let mode = 'both', here = null, lastSelected = null, onLocateCb = null, locateVisible = true
-  let highlightId = null, onMarkerFocusCb = null
+  const styleFor = () => STYLES[cssVar('--ch-basemap') || 'dark'] || STYLES.dark
 
-  let popupOpen = false
-  map.on('popupopen', () => { popupOpen = true })
-  map.on('popupclose', () => { popupOpen = false })
+  const map = new maplibregl.Map({
+    container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
+    attributionControl: false, dragRotate: true, pitchWithRotate: false,
+  })
+  map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
-  // Follow mode: the map auto-centres on each GPS fix until the user drags the
-  // map, then it stops following and a recenter button (wired in app.js) is
-  // shown. follow is only released once we have a position to return to, so the
-  // button is never offered when recenter would be a no-op.
-  // On the first fix we zoom in to ACQUIRE_ZOOM (street level for hunting);
-  // after that, follow keeps whatever zoom the user has set.
+  let mode = 'both', lastRecords = [], lastSelected = null, onLocateCb = null, locateVisible = true
+  let highlightId = null, onMarkerFocusCb = null, rotateCb = null
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
-  map.on('dragstart', () => {
-    if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) }
-  })
+  let trail = [], settingBearing = false, locateMarkers = []
 
-  function pointStyle(rec, nowMs) {
-    const tier = rssiTier(rec.rssi, currentOffset())
-    const color = cssVar(tierColorVar(tier))
-    // Fade with age within the active time window (#149) — applied to stroke
-    // and fill so a nearly-expired point is nearly transparent, not outlined.
-    const fade = ageFade(rec.rx_at, nowMs, timeWindowMs)
-    return {
-      radius: 8,
-      color,
-      weight: 1,
-      opacity: fade,
-      fillColor: color,
-      fillOpacity: fillOpacity(tier) * fade,
+  // Follow releases when the user drags; native bearing gesture reports back via
+  // onGestureRotate (guarded so our own setBearing calls don't count as user input).
+  map.on('dragstart', () => { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } })
+  map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
+  // Hex resolution depends on zoom — rebuild once the zoom settles.
+  map.on('zoomend', () => draw())
+
+  // ---- feature builders (GeoJSON sources are updated via setData) ----
+  function buildPointsFC(records, nowMs) {
+    const feats = []
+    for (const r of records) {
+      if (r.lat == null || r.lon == null) continue
+      const tier = rssiTier(r.rssi, currentOffset())
+      const fade = ageFade(r.rx_at, nowMs, timeWindowMs)   // age-fade within the window (#149)
+      feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
+        properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade } })
     }
+    return fc(feats)
+  }
+  function buildHexFC(records) {
+    const cells = new Map()
+    const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
+    for (const r of records) {
+      if (r.lat == null || r.lon == null) continue
+      const id = hexCellAt(r.lat, r.lon, res)
+      const cur = cells.get(id)
+      if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
+    }
+    const feats = []
+    for (const [id, c] of cells) {
+      const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
+      const tier = rssiTier(c.best, currentOffset())
+      feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
+        properties: { color: cssVar(tierColorVar(tier)), op: fillOpacity(tier) } })
+    }
+    return fc(feats)
+  }
+  function buildHighlightFC() {
+    if (highlightId == null) return EMPTY
+    const r = lastRecords.find((x) => String(x.id) === String(highlightId))
+    if (!r || r.lat == null || r.lon == null) return EMPTY
+    return fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] }, properties: {} }])
+  }
+  function buildHereFC() {
+    if (!lastPos) return EMPTY
+    return fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [lastPos[1], lastPos[0]] }, properties: {} }])
+  }
+  function buildTrailFC() {
+    if (trail.length < 2) return EMPTY
+    return fc([{ type: 'Feature', geometry: { type: 'LineString', coordinates: trail.map(([la, lo]) => [lo, la]) }, properties: {} }])
+  }
+  function buildLocateHeatFC(records) {
+    return fc(toLocatePoints(records).map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+      properties: { w: Math.max(0.05, Math.min(1, (p.rssi + 115) / 45)) } })))
   }
 
-  // Rendering is data-driven (the 1s tick calls render with fresh rows), but the
-  // hex resolution depends on the zoom and Leaflet misplaces vector layers if they
-  // are torn down and rebuilt mid zoom-animation — the rebuilt polygons miss the
-  // animation transform and appear shifted from the basemap until the next
-  // reproject. So cache the latest rows, skip rebuilds while a zoom is animating
-  // (the existing layers animate correctly), and do one clean rebuild on zoomend.
-  let lastRecords = []
-  let zooming = false
-  map.on('zoomstart', () => { zooming = true })
-  map.on('zoomend', () => { zooming = false; draw() })
-
-  function render(records, selectedIds) {
-    lastRecords = records
-    lastSelected = selectedIds || null
+  // ---- overlays: added on every style load (initial + theme switch) ----
+  function addOverlays() {
+    for (const id of ['trail', 'hex', 'locate', 'points', 'highlight', 'here']) {
+      if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
+    }
+    if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
+      paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': 0.5 } })
+    if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
+    if (!map.getLayer('locate-heat')) map.addLayer({ id: 'locate-heat', type: 'heatmap', source: 'locate',
+      layout: { visibility: locateVisible ? 'visible' : 'none' },
+      paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.2, cssVar('--ch-sig-mid'), 0.6, cssVar('--ch-sig-warm'), 1, cssVar('--ch-sig-hot')] } })
+    if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
+      paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
+        'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1, 'circle-stroke-opacity': ['get', 'op'] } })
+    if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
+      paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
+    if (!map.getLayer('here')) map.addLayer({ id: 'here', type: 'circle', source: 'here',
+      paint: { 'circle-radius': 6, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
     draw()
   }
+  // Initial style: 'load' fires once when the first style is ready. A theme
+  // switch (setStyle) does NOT re-fire 'load'/'style.load' — only 'styledata' —
+  // so applyBasemap re-adds the overlays via afterStyle once the new style
+  // finishes. addOverlays is idempotent (guards on existing source/layer).
+  // 'idle' fires only after the new style AND its tiles have settled — avoids
+  // the race where isStyleLoaded() is briefly true for the OLD style right after
+  // setStyle (which would re-add overlays that the swap then wipes).
+  function afterStyle(cb) { map.once('idle', cb) }
+  map.on('load', addOverlays)
 
-  // "Locate": estimate a transmitter's position from this hunter's own
-  // receptions (RSSI-weighted centroid + density heatmap, same pure algorithm
-  // as the multi-hunter web version — see locate.js). Runs over the already-
-  // filtered record set the map plots, so it answers "where does the traffic
-  // I'm currently looking at come from" — a selected target or any narrowing
-  // filter (packet-type, window, …). No API/DB read here, just what this hunter
-  // has walked past.
+  // Point tap → open popup + roll the receptions-log playhead (#130). Registered
+  // once; fires only while the 'points' layer exists.
+  function onPointClick(e) {
+    const f = e.features && e.features[0]; if (!f) return
+    const r = lastRecords.find((x) => String(x.id) === String(f.properties.id)); if (!r) return
+    if (onMarkerFocusCb) onMarkerFocusCb(r)
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+      .setLngLat([r.lon, r.lat]).setHTML(popupHtml(r, lastSelected)).addTo(map)
+    wireIsolate(popup, r); wireIgnore(popup, r)
+  }
+  map.on('click', 'points', onPointClick)
+  map.on('mouseenter', 'points', () => { map.getCanvas().style.cursor = 'pointer' })
+  map.on('mouseleave', 'points', () => { map.getCanvas().style.cursor = '' })
+
+  function draw() {
+    if (!map.getSource('points')) return   // style not ready yet
+    const records = lastRecords, nowMs = Date.now()
+    map.getSource('hex').setData(mode !== 'points' ? buildHexFC(records) : EMPTY)
+    map.getSource('points').setData(mode !== 'hex' ? buildPointsFC(records, nowMs) : EMPTY)
+    map.getSource('trail').setData(buildTrailFC())
+    map.getSource('highlight').setData(buildHighlightFC())
+    map.getSource('here').setData(buildHereFC())
+    drawLocate(records)
+  }
+
+  // Locate: RSSI-weighted centroid + density heatmap over the plotted set (same
+  // pure algorithm as web/map.js — see locate.js). The estimate always computes
+  // so the readout is instant; visibility only hides the rendered overlay.
   function drawLocate(records) {
-    locateLayer.clearLayers()
     const points = toLocatePoints(records)
-    // Always compute — the FAB toggle (setLocateVisible) only hides the
-    // rendered overlay/readout, so the estimate is instantly available with
-    // no recompute lag whenever the user switches it back on. No points yet
-    // (nothing plotted) → no readout rather than a meaningless "0 points".
     const res = points.length ? locate(points) : null
+    if (map.getSource('locate')) map.getSource('locate').setData(locateVisible && res ? buildLocateHeatFC(records) : EMPTY)
+    locateMarkers.forEach((m) => m.remove()); locateMarkers = []
     if (!locateVisible || !res) { if (onLocateCb) onLocateCb(null); return }
-    if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
     if (res.centroid) {
-      L.marker([res.centroid.lat, res.centroid.lon], {
-        icon: L.divIcon({ className: '', html: '<div class="lc-centroid"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
-      }).bindTooltip('weighted estimate').addTo(locateLayer)
+      const el = document.createElement('div'); el.innerHTML = '<div class="lc-centroid"></div>'
+      locateMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([res.centroid.lon, res.centroid.lat]).addTo(map))
     }
     if (res.strongest) {
-      L.marker([res.strongest.lat, res.strongest.lon], {
-        icon: L.divIcon({ className: '', html: '<div class="lc-strongest">★</div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
-      }).bindTooltip('strongest reception').addTo(locateLayer)
+      const el = document.createElement('div'); el.innerHTML = '<div class="lc-strongest">★</div>'
+      locateMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([res.strongest.lon, res.strongest.lat]).addTo(map))
     }
     if (onLocateCb) onLocateCb(res)
   }
-  // onLocate registers a callback invoked with the locate() result (or null
-  // when no sender is isolated, or the overlay is toggled off) every render
-  // tick — drives the info readout.
+
+  // ---- public API (unchanged from the Leaflet version) ----
+  function render(records, selectedIds) { lastRecords = records || []; lastSelected = selectedIds || null; draw() }
   function onLocate(cb) { onLocateCb = cb }
-  // setLocateVisible toggles the heatmap/centroid/strongest overlay + info
-  // readout on or off without touching the underlying estimate, which keeps
-  // running every tick regardless (see drawLocate).
-  function setLocateVisible(v) { locateVisible = !!v; draw() }
-
-  function draw() {
-    if (popupOpen) return   // don't rebuild markers while the user is inspecting a popup (it would close it)
-    if (zooming) return     // mid zoom-animation: keep current layers; zoomend triggers a clean rebuild
-    const records = lastRecords
-    pointLayer.clearLayers(); hexLayer.clearLayers()
-    drawLocate(records)
-    // Hex first, points second — Leaflet's SVG renderer stacks paths in
-    // insertion order (last = topmost), so drawing hex before points keeps
-    // individual points clickable on top of the heatmap in 'both' mode
-    // instead of being covered by it.
-    if (mode !== 'points') {
-      const cells = new Map()
-      const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
-      for (const r of records) {
-        if (r.lat == null || r.lon == null) continue
-        const id = hexCellAt(r.lat, r.lon, res)
-        const cur = cells.get(id)
-        if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
-      }
-      for (const [id, c] of cells) {
-        // hexBoundary returns [lat,lon] pairs (closed ring) — directly usable by L.polygon
-        const ring = hexBoundary(id); if (!ring) continue
-        const tier = rssiTier(c.best, currentOffset())
-        L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1,
-          fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) }).addTo(hexLayer)
-      }
-    }
-    if (mode !== 'hex') {
-      const nowMs = Date.now()
-      for (const r of records) {
-        if (r.lat == null || r.lon == null) continue
-        const m = L.circleMarker([r.lat, r.lon], pointStyle(r, nowMs))
-        m.bindPopup(popupHtml(r, lastSelected))
-        m.on('popupopen', (e) => { wireIsolate(e.popup, r); wireIgnore(e.popup, r) })
-        // Tapping a point rolls the receptions-log playhead to it (#130).
-        m.on('click', () => { if (onMarkerFocusCb) onMarkerFocusCb(r) })
-        m.addTo(pointLayer)
-      }
-    }
-    applyHighlight()
+  function setLocateVisible(v) {
+    locateVisible = !!v
+    if (map.getLayer('locate-heat')) map.setLayoutProperty('locate-heat', 'visibility', locateVisible ? 'visible' : 'none')
+    draw()
   }
-
-  // applyHighlight rings the marker for the reception on the log playhead
-  // (highlightId). Rebuilt on every draw and on setHighlight so it tracks both
-  // new data and playhead moves. Non-interactive, so it never eats point taps.
-  function applyHighlight() {
-    highlightLayer.clearLayers()
-    if (highlightId == null) return
-    const r = lastRecords.find((x) => String(x.id) === String(highlightId))
-    if (!r || r.lat == null || r.lon == null) return
-    L.circleMarker([r.lat, r.lon], { radius: 11, color: cssVar('--ch-accent'), weight: 3, fill: false, interactive: false }).addTo(highlightLayer)
-  }
-  // setHighlight rings a reception by id (or clears it with null). Cheap — it
-  // only rebuilds the highlight layer, not the whole point layer.
-  function setHighlight(id) { highlightId = id == null ? null : id; applyHighlight() }
-  // onMarkerFocus registers the callback fired with the record when a point is
-  // tapped, so app.js can roll the receptions-log playhead to it.
+  function setHighlight(id) { highlightId = id == null ? null : id; if (map.getSource('highlight')) map.getSource('highlight').setData(buildHighlightFC()) }
   function onMarkerFocus(cb) { onMarkerFocusCb = cb }
   function setPosition(lat, lon) {
     lastPos = [lat, lon]
-    // Grow the session route trail; only redraw when a point is actually added.
-    const nextTrail = appendTrailPoint(trail, lat, lon)
-    if (nextTrail !== trail) { trail = nextTrail; trailLayer.setLatLngs(trail) }
-    here = here || L.circleMarker([lat, lon], { radius: 6, color: cssVar('--ch-accent'), weight: 2 }).addTo(map)
-    here.setLatLng([lat, lon])
-    if (follow) {
-      map.setView([lat, lon], acquired ? (map.getZoom() ?? ACQUIRE_ZOOM) : ACQUIRE_ZOOM)
-      acquired = true
-    }
+    const next = appendTrailPoint(trail, lat, lon)
+    if (next !== trail) { trail = next; if (map.getSource('trail')) map.getSource('trail').setData(buildTrailFC()) }
+    if (map.getSource('here')) map.getSource('here').setData(buildHereFC())
+    if (follow) { map.jumpTo({ center: [lon, lat], zoom: acquired ? map.getZoom() : ACQUIRE_ZOOM }); acquired = true }
   }
-  function centerOn(lat, lon) { map.setView([lat, lon], map.getZoom() ?? 15) }
-  // recenter re-enables follow and snaps back to the last known position.
-  function recenter() {
-    if (!lastPos) return
-    follow = true
-    map.setView(lastPos, map.getZoom() ?? 15)
-    if (onFollow) onFollow(true)
-  }
-  // onFollowChange registers a callback invoked with the follow flag whenever it
-  // flips (false when the user pans away, true on recenter).
+  function centerOn(lat, lon) { map.easeTo({ center: [lon, lat], duration: 400 }) }
+  function recenter() { if (!lastPos) return; follow = true; map.jumpTo({ center: [lastPos[1], lastPos[0]] }); if (onFollow) onFollow(true) }
   function onFollowChange(cb) { onFollow = cb }
-  // setBearing rotates the map to the given bearing (degrees). No-op when the
-  // leaflet-rotate plugin didn't load, so the app degrades to north-up.
-  let settingBearing = false
-  function setBearing(deg) {
-    if (typeof map.setBearing !== 'function') return
-    settingBearing = true
-    try { map.setBearing(deg) } finally { settingBearing = false }
-  }
-  // onGestureRotate fires only for user-driven rotation (the two-finger
-  // gesture), not for our own setBearing calls — app.js uses it to drop out
-  // of heading-follow when the user takes over manually.
-  function onGestureRotate(cb) {
-    map.on('rotate', () => { if (!settingBearing) cb(typeof map.getBearing === 'function' ? map.getBearing() : 0) })
-  }
-  function setLayerMode(m) { mode = m }
-  // setAttenuator updates the runtime attenuator (dB) used in the plot offset.
-  // The next render tick repaints with the new tiers.
-  function setAttenuator(db) { attenuatorDb = Number(db) || 0 }
-  // setTimeWindow mirrors the filter's active time window (ms, or null for no
-  // window) so pointStyle can fade points by age within it. The 1s render tick
-  // keeps the fade progressing.
+  function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
+  function onGestureRotate(cb) { rotateCb = cb }
+  function setLayerMode(m) { mode = m; draw() }
+  function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
+  function applyBasemap() { map.setStyle(styleFor()); afterStyle(addOverlays) }   // re-add overlays after the style swap
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)
-    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec, lastSelected)).openOn(map)
-    wireIsolate(popup, rec)
-    wireIgnore(popup, rec)
+    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+      .setLngLat([rec.lon, rec.lat]).setHTML(popupHtml(rec, lastSelected)).addTo(map)
+    wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
   return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
@@ -334,13 +217,9 @@ export function createHuntMap(containerId) {
 function popupHtml(r, selectedIds) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   const kindLabel = { channel_name: 'name', advert_pubkey: 'node', discover_pubkey: 'node', relay: 'relay' }[r.sender_kind] || 'src'
-  const senderLine = r.sender_id
-    ? `${kindLabel} ${esc(r.sender_label || r.sender_id)}`
-    : 'sender — (none)'
+  const senderLine = r.sender_id ? `${kindLabel} ${esc(r.sender_label || r.sender_id)}` : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
-  // "Isolate" replaces the whole target selection with just this sender, so it
-  // only reads "Isolated ✓" when it is already the sole target (#178).
   const key = r.sender_id ? String(r.sender_id).toLowerCase() : null
   const sole = !!(key && selectedIds && selectedIds.size === 1 && selectedIds.has(key))
   const isolateBtn = sole
@@ -355,19 +234,12 @@ function popupHtml(r, selectedIds) {
 function wireIsolate(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-isolate')
   if (!btn || !r.sender_id || btn.disabled) return
-  // Optimistic feedback: the next render tick will confirm this via
-  // popupHtml's isolatedId check, but that tick is 1s away and the popup
-  // doesn't rebuild while open (see draw()'s popupOpen guard) — without this,
-  // clicking gives no visible response until the popup is closed and reopened.
   btn.onclick = () => {
     document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id, label: r.sender_label } }))
-    btn.textContent = 'Isolated ✓'
-    btn.disabled = true
-    btn.classList.add('active')
+    btn.textContent = 'Isolated ✓'; btn.disabled = true; btn.classList.add('active')
   }
 }
 function wireIgnore(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-ignore')
-  if (btn && r.sender_id) btn.onclick = () => document.dispatchEvent(
-    new CustomEvent('hunt:ignore-sender', { detail: { id: r.sender_id } }))
+  if (btn && r.sender_id) btn.onclick = () => document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id: r.sender_id } }))
 }

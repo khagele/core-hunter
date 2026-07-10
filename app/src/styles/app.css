@@ -295,6 +295,16 @@ body.onboarding #onboarding-btn { display: none; }
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
+/* MapLibre popup themed to the app surface (#147) — default is white. */
+.maplibregl-popup-content { background: var(--ch-surface); color: var(--ch-text);
+  border: 1px solid var(--ch-border); border-radius: 8px; padding: 10px 12px;
+  backdrop-filter: blur(8px); font-size: 12px; line-height: 1.45; }
+.maplibregl-popup-close-button { color: var(--ch-muted); font-size: 16px; padding: 0 5px; }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--ch-surface); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--ch-surface); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--ch-surface); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--ch-surface); }
+
 /* Map popup isolate/ignore buttons */
 .ch-isolate, .ch-ignore { border: 1px solid var(--ch-accent-2); border-radius: 8px; padding: 4px 8px;
   background: transparent; color: var(--ch-accent-2); font-size: 12px; cursor: pointer; }
