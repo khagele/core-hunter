@@ -340,3 +340,19 @@ test('assets are cache-busted with the version query', async ({ page }) => {
   const cssHref = await page.getAttribute('link[rel="stylesheet"][href^="style.css"]', 'href')
   expect(cssHref).toMatch(/^style\.css\?v=/)
 })
+
+test('the site is installable: manifest is linked and valid, no service worker (#194)', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /^\/manifest\.webmanifest\?v=/)
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1)
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#0b0e14')
+
+  const manifest = await page.evaluate(() => fetch('/manifest.webmanifest').then((r) => r.json()))
+  expect(manifest.display).toBe('standalone')
+  expect(manifest.name).toBeTruthy()
+  expect(manifest.icons.length).toBeGreaterThan(0)
+
+  // No offline caching (explicitly out of scope, #194) -- the site always needs the API.
+  const regs = await page.evaluate(() => navigator.serviceWorker.getRegistrations())
+  expect(regs).toHaveLength(0)
+})
