@@ -30,6 +30,7 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
+import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
@@ -102,6 +103,12 @@ const state = {
   gpsError: false,
   // Onboarding re-opened via the "?" button after the splash has been dismissed.
   showOnboarding: false,
+  // Epoch ms of the most recent GPS fix, used to detect a stalled watch on
+  // return from background (#198). Distinct from lastPacketAt (BLE receptions).
+  lastGpsFixAt: null,
+  // Epoch ms when the page last became hidden during an active session, or
+  // null when visible / not connected (#199).
+  hiddenAt: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +242,31 @@ function initSplashContent() {
   )
 }
 
+// Paused-capture banner (#199) — a brief glance shown after returning from a
+// backgrounded gap long enough to matter (see shouldShowPausedBanner).
+const PAUSED_BANNER_MS = 4000
+let pausedBannerTimer = null
+function showPausedBanner(hiddenForLabel) {
+  const box = el('bg-paused-banner')
+  box.textContent = `Capture paused ${hiddenForLabel} (backgrounded)`
+  box.hidden = false
+  if (pausedBannerTimer) clearTimeout(pausedBannerTimer)
+  pausedBannerTimer = setTimeout(() => { box.hidden = true; pausedBannerTimer = null }, PAUSED_BANNER_MS)
+}
+
+// One-time first-connect hint (#199): screen-off/background pauses capture,
+// so keep the screen on and the app foregrounded. Dismissible; never shown
+// again once acknowledged.
+const BG_HINT_SEEN_KEY = 'core-hunter-bg-hint-seen'
+function maybeShowBgHint() {
+  try { if (localStorage.getItem(BG_HINT_SEEN_KEY)) return } catch (_) { return }
+  el('bg-hint').hidden = false
+}
+function dismissBgHint() {
+  el('bg-hint').hidden = true
+  try { localStorage.setItem(BG_HINT_SEEN_KEY, '1') } catch (_) {}
+}
+
 // Splash / onboarding overlay: shown until the first GPS fix (per splashState),
 // and re-openable afterwards via the "?" button (state.showOnboarding). Call
 // wherever hasFix/connected/bleError/gpsError/showOnboarding changes.
@@ -256,11 +288,41 @@ function refreshSplash() {
 function startGpsWatch() {
   state.gps.start(
     (fix) => {
+      state.lastGpsFixAt = Date.now()
       if (state.map) state.map.setPosition(fix.lat, fix.lon)
       if (!state.hasFix) { state.hasFix = true; refreshSplash() }
     },
     () => { state.gpsError = true; refreshSplash() }
   )
+}
+
+// ---------------------------------------------------------------------------
+// Hide / return-to-visible (#198, #199)
+// ---------------------------------------------------------------------------
+// Screen-off and backgrounding aren't preventable on the web (#144) — this is
+// best-effort hardening: minimise the gap on return rather than eliminate it.
+// The resume runs whenever a connected session was backgrounded (keyed on
+// hiddenAt), including while BLE is mid-reconnect (state.connected false) — that
+// drop-while-backgrounded case is the one this targets. See planResume.
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    if (state.connected) state.hiddenAt = Date.now()
+    return
+  }
+  const hiddenAt = state.hiddenAt
+  state.hiddenAt = null
+  const now = Date.now()
+  const plan = planResume({ hiddenAt, connected: state.connected, lastGpsFixAt: state.lastGpsFixAt, now })
+  if (!plan.run) return
+
+  // BLE dropped while backgrounded → its backoff setTimeout was throttled; wake
+  // it so a reconnect is attempted now instead of waiting out the (up to 30s) delay.
+  if (plan.nudgeReconnect && state.transport && state.transport.nudgeReconnect) state.transport.nudgeReconnect()
+  if (plan.restartGps) { state.gps.stop(); startGpsWatch() }
+  drawOnce()      // don't wait up to 1s for the next render tick
+  drainOnce()     // don't wait up to 5s for the next drain tick
+  if (plan.showBanner) showPausedBanner(sinceLabel(now, hiddenAt))
 }
 
 // ---------------------------------------------------------------------------
@@ -343,26 +405,41 @@ async function renderTick() {
 // Rows are NEVER removed from IndexedDB. If publish fails, the row stays
 // unpublished and will be retried on the next drain.
 
-async function drainLoop() {
-  if (state.publisher && state.publisher.connected() && state.rxPubkey) {
-    try {
-      const rows = await state.queue.takeAll()
-      let n = 0
-      for (const r of rows) {
-        if (state.published.has(r.id)) continue
-        try {
-          await state.publisher.publish(state.rxPubkey, r, state.name)
-          state.published.add(r.id)
-          n++
-        } catch (_) {
-          // publish failed — leave for next drain
-        }
+// The actual publish pass, split out from drainLoop's timer-rescheduling so it
+// can also be called on demand (e.g. right after returning from background)
+// without spawning a second parallel setTimeout chain alongside the running one.
+// In-flight guard: the on-demand drain (from onVisibilityChange) can otherwise
+// run concurrently with the periodic drainLoop, and since a row is only marked
+// published after publish() resolves, two overlapping passes could each publish
+// the same row (a redundant MQTT message — backend dedups on raw+rx_at).
+let draining = false
+async function drainOnce() {
+  if (draining) return
+  if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
+  draining = true
+  try {
+    const rows = await state.queue.takeAll()
+    let n = 0
+    for (const r of rows) {
+      if (state.published.has(r.id)) continue
+      try {
+        await state.publisher.publish(state.rxPubkey, r, state.name)
+        state.published.add(r.id)
+        n++
+      } catch (_) {
+        // publish failed — leave for next drain
       }
-      if (n > 0) console.debug('[drain] published', n, 'record(s)')
-    } catch (_) {
-      // queue read failed — retry next cycle
     }
+    if (n > 0) console.debug('[drain] published', n, 'record(s)')
+  } catch (_) {
+    // queue read failed — retry next cycle
+  } finally {
+    draining = false
   }
+}
+
+async function drainLoop() {
+  await drainOnce()
   setTimeout(drainLoop, 5000)
 }
 
@@ -454,6 +531,7 @@ async function connectAll() {
     setHuntingChrome(true)
     el('discover-btn').disabled = false
     refreshConnState()
+    maybeShowBgHint()
   } catch (e) {
     console.error('[connect]', e)
     connectButtons().forEach((btn) => { btn.textContent = 'Connect (retry)'; btn.disabled = false })
@@ -1326,6 +1404,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshSettingsIndicator()
   initSplashContent()
   refreshSplash()
+
+  // Resume capture promptly on return from background (#198, #199)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  el('bg-hint-close').addEventListener('click', dismissBgHint)
 
   // Start background loops
   renderTick()

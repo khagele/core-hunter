@@ -14,6 +14,8 @@ export class WebBluetoothTransport {
     this._listeners = [];
     this._onStatus = null;
     this._intentional = false; // true = user disconnected, don't auto-reconnect
+    this._reconnecting = false; // true while the backoff loop is running
+    this._wake = null;          // resolves the current backoff sleep early (nudge)
   }
 
   // onFrame(cb): register a listener; cb receives a DataView per incoming frame.
@@ -50,22 +52,44 @@ export class WebBluetoothTransport {
     });
   }
 
+  // _sleep is an interruptible backoff wait: nudgeReconnect() can resolve it
+  // early so a reconnect is retried immediately (see nudgeReconnect).
+  _sleep(ms) {
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(t); this._wake = null; resolve(); };
+      const t = setTimeout(done, ms);
+      this._wake = done;
+    });
+  }
+
+  // nudgeReconnect wakes an in-progress backoff sleep so the next reconnect is
+  // attempted now instead of waiting out the (up to 30s) delay. Used on
+  // return-to-foreground, where the backoff setTimeout was itself throttled
+  // while backgrounded (#198). No-op when not currently reconnecting.
+  nudgeReconnect() { if (this._reconnecting && this._wake) this._wake(); }
+
   async _onDisconnected() {
     if (this._intentional) return;
+    this._reconnecting = true;
     this._status('reconnecting');
     // Exponential backoff, capped; keep retrying until reconnected or user stops.
     let delay = 1500;
-    while (!this._intentional && this.device && !this.device.gatt.connected) {
-      await new Promise((r) => setTimeout(r, delay));
-      if (this._intentional) return;
-      try {
-        await this._setup();
-        this._status('connected');
-        return;
-      } catch (e) {
-        delay = Math.min(delay * 2, 30000);
-        this._status('reconnecting');
+    try {
+      while (!this._intentional && this.device && !this.device.gatt.connected) {
+        await this._sleep(delay);
+        if (this._intentional) return;
+        try {
+          await this._setup();
+          this._status('connected');
+          return;
+        } catch (e) {
+          delay = Math.min(delay * 2, 30000);
+          this._status('reconnecting');
+        }
       }
+    } finally {
+      this._reconnecting = false;
+      this._wake = null;
     }
   }
 
