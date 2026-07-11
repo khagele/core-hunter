@@ -120,14 +120,15 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
-#layer-toggle, #discover-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #discover-btn, #recenter-btn, #mode3d-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 #layer-toggle { bottom: 192px; } #discover-btn { bottom: 246px; }
 #recenter-btn { bottom: 300px; }
-#layer-toggle svg, #discover-btn svg, #recenter-btn svg { pointer-events: none; }
+#mode3d-toggle { bottom: 354px; }
+#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
 /* Auto-discover FAB states (#232, #233): steady color shows on/off + whether
@@ -255,9 +256,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
 body.onboarding #topbar,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn { z-index: 560; }
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle { z-index: 560; }
 body.onboarding #topbar-controls, body.onboarding #settings-btn,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn {
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle {
   box-shadow: 0 0 0 2px var(--ch-accent); }
 /* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
    topbar) while the overlay is already showing. */
