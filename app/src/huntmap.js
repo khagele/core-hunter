@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
@@ -19,11 +19,17 @@ const STYLES = {
 }
 const EMPTY = { type: 'FeatureCollection', features: [] }
 const fc = (features) => ({ type: 'FeatureCollection', features })
+// Bare background-only style — loads with no network, so the signal overlays
+// can mount on it when the hosted basemap style is unreachable (see below).
+const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 
 export function createHuntMap(containerId) {
-  if (typeof maplibregl === 'undefined') {
-    return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
-  }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
+  // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
+  // script failed, or when WebGL is unavailable — GPU blocklist, an older
+  // device, or a lost context — since `new maplibregl.Map` throws synchronously
+  // in that case (Leaflet's raster map had no WebGL dependency).
+  if (typeof maplibregl === 'undefined') return stub
   const cfg = getConfig()
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back (display-only, per tick).
@@ -32,10 +38,13 @@ export function createHuntMap(containerId) {
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
   const styleFor = () => STYLES[cssVar('--ch-basemap') || 'dark'] || STYLES.dark
 
-  const map = new maplibregl.Map({
-    container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
-    attributionControl: false, dragRotate: true, pitchWithRotate: false,
-  })
+  let map
+  try {
+    map = new maplibregl.Map({
+      container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
+      attributionControl: false, dragRotate: true, pitchWithRotate: false,
+    })
+  } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
   let mode = 'both', lastRecords = [], lastSelected = null, onLocateCb = null, locateVisible = true
@@ -97,11 +106,26 @@ export function createHuntMap(containerId) {
   }
   function buildLocateHeatFC(records) {
     return fc(toLocatePoints(records).map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-      properties: { w: Math.max(0.05, Math.min(1, (p.rssi + 115) / 45)) } })))
+      properties: { w: heatWeight(p.rssi) } })))
   }
 
   // ---- overlays: added on every style load (initial + theme switch) ----
+  // overlaysReady flips true once the signal layers are mounted; the fallback
+  // timer (armStyleFallback) uses it so a stuck basemap style can't leave the
+  // map blank — the overlays must not be gated on a third-party basemap.
+  let overlaysReady = false, styleTimer = null
+  function armStyleFallback() {
+    clearTimeout(styleTimer)
+    styleTimer = setTimeout(() => {
+      // Hosted style never mounted the overlays (offline / host down / cold PWA
+      // cache) → drop to a bare background style and mount them there, so the
+      // signal points/hex/trail/here survive basemap loss (a Leaflet raster 404
+      // used to leave every overlay intact).
+      if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
+    }, 12000)
+  }
   function addOverlays() {
+    clearTimeout(styleTimer); overlaysReady = true
     for (const id of ['trail', 'hex', 'locate', 'points', 'highlight', 'here']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
@@ -126,11 +150,17 @@ export function createHuntMap(containerId) {
   // switch (setStyle) does NOT re-fire 'load'/'style.load' — only 'styledata' —
   // so applyBasemap re-adds the overlays via afterStyle once the new style
   // finishes. addOverlays is idempotent (guards on existing source/layer).
-  // 'idle' fires only after the new style AND its tiles have settled — avoids
-  // the race where isStyleLoaded() is briefly true for the OLD style right after
-  // setStyle (which would re-add overlays that the swap then wipes).
+  // afterStyle runs cb once a HOSTED (network) style finishes loading after
+  // setStyle. 'idle' fires only after the new style + tiles settle, so it avoids
+  // the race where isStyleLoaded() is briefly true for the OLD style.
   function afterStyle(cb) { map.once('idle', cb) }
+  // mountBare adds the overlays onto the inline bare fallback style. An inline
+  // style applies SYNCHRONOUSLY and emits no styledata/idle/style.load event
+  // (and the map never reaches 'idle' when it got here stuck mid-load), so poll
+  // isStyleLoaded() — which is immediately true — rather than waiting on a hook.
+  function mountBare() { if (map.isStyleLoaded()) addOverlays(); else setTimeout(mountBare, 100) }
   map.on('load', addOverlays)
+  armStyleFallback()   // safety net if the initial hosted style never loads
 
   // Point tap → open popup + roll the receptions-log playhead (#130). Registered
   // once; fires only while the 'points' layer exists.
@@ -202,7 +232,7 @@ export function createHuntMap(containerId) {
   function setLayerMode(m) { mode = m; draw() }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
-  function applyBasemap() { map.setStyle(styleFor()); afterStyle(addOverlays) }   // re-add overlays after the style swap
+  function applyBasemap() { overlaysReady = false; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }   // re-add overlays after the style swap (+ fallback if it fails)
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
     centerOn(rec.lat, rec.lon)

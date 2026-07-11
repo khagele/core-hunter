@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight } from '../signal.js'
+
+describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
+  it('maps the strong end to 1 and clamps above', () => {
+    expect(heatWeight(-70)).toBe(1)
+    expect(heatWeight(-40)).toBe(1)
+  })
+  it('scales linearly across the band', () => {
+    expect(heatWeight(-92.5)).toBeCloseTo(0.5)   // midpoint of [-115,-70]
+  })
+  it('floors weak/absent signal at 0.05', () => {
+    expect(heatWeight(-115)).toBeCloseTo(0.05)   // (−115+115)/45 = 0 → floor
+    expect(heatWeight(-140)).toBe(0.05)
+  })
+})
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
