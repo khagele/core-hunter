@@ -17,12 +17,17 @@ const BASEMAP = { dark: 'dark_all', light: 'light_all' }
 let theme = urlstate.initial('theme', 'dark') === 'light' ? 'light' : 'dark'
 document.documentElement.setAttribute('data-theme', theme)
 
-// Initial map view from the shared/saved state (falls back to a Belgium-ish view).
+// Initial map view from the shared/saved state. With no saved/URL view (#218),
+// start on a neutral world view -- not tied to any one region -- and let
+// snapToLatestPoints() below fit to today's actual data once it's fetched.
 const iLat = parseFloat(urlstate.initial('lat', '')), iLon = parseFloat(urlstate.initial('lon', ''))
 const iZoom = parseInt(urlstate.initial('z', ''), 10)
+const hasSavedView = Number.isFinite(iLat) && Number.isFinite(iLon)
+// Zoom keeps its own independent fallback (a shared link can carry z= without
+// lat/lon, e.g. to set a default zoom level) -- only the center changes.
 const map = L.map('map', { zoomControl: true }).setView(
-  Number.isFinite(iLat) && Number.isFinite(iLon) ? [iLat, iLon] : [51, 4],
-  Number.isFinite(iZoom) ? iZoom : 12)
+  hasSavedView ? [iLat, iLon] : [20, 0],
+  Number.isFinite(iZoom) ? iZoom : (hasSavedView ? 12 : 2))
 const tileUrl = (t) => `https://{s}.basemaps.cartocdn.com/${BASEMAP[t]}/{z}/{x}/{y}{r}.png`
 const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
@@ -232,6 +237,19 @@ async function snapToHunter() {
 }
 document.getElementById('f-hunter').addEventListener('change', snapToHunter)
 window.__hunterMarkerLatLng = () => (hunterMarker ? hunterMarker.getLatLng() : null) // test hook
+
+// Fit the map to today's actual points on first load when there's no
+// saved/URL view yet (#218) -- same fetch-and-fitBounds shape as
+// snapToHunter() above, fired once instead of on a filter change. Leaves the
+// neutral world-view placeholder in place if there's no data to fit to yet.
+async function snapToLatestPoints() {
+  let fetched
+  try {
+    fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
+  } catch (_) { return }
+  if (fetched.points.length) map.fitBounds(fetched.points.map((p) => [p.lat, p.lon]))
+}
+window.__snapToLatestPoints = snapToLatestPoints // test hook
 
 // Paint a normalized density grid to a canvas and return a Leaflet image overlay.
 function heatmapOverlay(hm) {
@@ -556,6 +574,7 @@ updateSenderTitle() // tooltip for a sender restored from the URL/storage
 // deferred into applyRole(), once the real role is known.
 if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
 if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 refresh()
 
 // Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
