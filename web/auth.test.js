@@ -32,4 +32,9 @@ describe('role helpers', () => {
   it('hunter also sees the degraded notice (own data is exact server-side, global is coarse)', () => {
     expect(guestNotice('hunter')).not.toBeNull()
   })
+  it('tells an anonymous guest to log in, but a hunter (already logged in) to seek member verification', () => {
+    expect(guestNotice('guest')).toMatch(/log in/i)
+    expect(guestNotice('hunter')).toMatch(/member/i)
+    expect(guestNotice('hunter')).not.toMatch(/log in/i)
+  })
 })

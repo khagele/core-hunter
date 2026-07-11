@@ -19,6 +19,12 @@ export function hunterOptionLabel(h) {
   return `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
 }
 
+// Friendly label for a raw decoder packet_type — same mapping as the filter
+// chips, reused so map popups and other displays read the same way (#174).
+export function packetTypeLabel(rawType) {
+  return FILTER_PACKET_TYPES.find((t) => t.value === rawType)?.label ?? rawType
+}
+
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
 
 // Format a Date as a local-time `YYYY-MM-DDTHH:MM` string for datetime-local inputs.

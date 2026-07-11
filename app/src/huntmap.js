@@ -3,6 +3,7 @@ import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heat
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
+import { packetTypeLabel } from './filters.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -246,7 +247,10 @@ export function createHuntMap(containerId) {
 
 function popupHtml(r, selectedIds) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-  const kindLabel = { channel_name: 'name', advert_pubkey: 'node', discover_pubkey: 'node', relay: 'relay' }[r.sender_kind] || 'src'
+  // Glossary (#174): 'sender' is the general term for a heard device, 'repeater'
+  // for one known to be relaying (not originating) traffic. `relay` here is the
+  // internal sender_kind value (meshpacket.js) -- only its display label changed.
+  const kindLabel = { channel_name: 'name', advert_pubkey: 'sender', discover_pubkey: 'sender', relay: 'repeater' }[r.sender_kind] || 'sender'
   const senderLine = r.sender_id ? `${kindLabel} ${esc(r.sender_label || r.sender_id)}` : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
@@ -255,8 +259,8 @@ function popupHtml(r, selectedIds) {
   const isolateBtn = sole
     ? `<button class="ch-isolate active" disabled>Isolated ✓</button>`
     : `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
-  return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
-    + `${esc(r.packet_type)}<br>`
+  return `<div class="ch-popup">RSSI ${esc(r.rssi)} · SNR ${esc(r.snr)}<br>`
+    + `${esc(packetTypeLabel(r.packet_type))}<br>`
     + senderLine + chanLine + textLine + '<br>'
     + isolateBtn
     + ` <button class="ch-ignore" ${r.sender_id ? '' : 'disabled'}>Ignore this ID</button></div>`
