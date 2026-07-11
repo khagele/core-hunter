@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveState, snapshotToQuery } from './urlstate.js'
+import { resolveState, snapshotToQuery, persistableState } from './urlstate.js'
 
 describe('resolveState', () => {
   const keys = ['theme', 'mode', 'sender']
@@ -31,6 +31,18 @@ describe('resolveState', () => {
     const url = new URLSearchParams('theme=')
     expect(resolveState(keys, stored, url)).toEqual({ theme: 'light' })
   })
+
+  it('ignores the stored value for a urlOnly key when the URL omits it (#217)', () => {
+    const stored = { theme: 'light', sender: 'ab12' }
+    const url = new URLSearchParams('')
+    expect(resolveState(keys, stored, url, ['sender'])).toEqual({ theme: 'light' })
+  })
+
+  it('still takes the URL value for a urlOnly key when present (#217)', () => {
+    const stored = { sender: 'ab12' }
+    const url = new URLSearchParams('sender=cd34')
+    expect(resolveState(keys, stored, url, ['sender'])).toEqual({ sender: 'cd34' })
+  })
 })
 
 describe('snapshotToQuery', () => {
@@ -48,5 +60,16 @@ describe('snapshotToQuery', () => {
 
   it('url-encodes values (e.g. ISO timestamps with colons)', () => {
     expect(snapshotToQuery({ from: '2026-07-02T00:00' })).toBe('from=2026-07-02T00%3A00')
+  })
+})
+
+describe('persistableState', () => {
+  it('drops urlOnly keys, keeping everything else (#217)', () => {
+    expect(persistableState({ theme: 'light', from: '2026-07-11T00:00', to: '2026-07-11T23:59' }, ['from', 'to']))
+      .toEqual({ theme: 'light' })
+  })
+
+  it('is a no-op when no keys are urlOnly', () => {
+    expect(persistableState({ theme: 'light', mode: 'hex' }, [])).toEqual({ theme: 'light', mode: 'hex' })
   })
 })

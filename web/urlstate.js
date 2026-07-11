@@ -14,11 +14,14 @@ const STORAGE_KEY = 'ch-state'
 
 // Merge the stored map and the URL params into a resolved state object. The URL
 // value wins per key; empty strings from either source are treated as absent.
-export function resolveState(keys, stored, urlParams) {
+// A key listed in urlOnlyKeys never falls back to the stored value (#217) — it's
+// either explicit in the URL, or left for the field's own default.
+export function resolveState(keys, stored, urlParams, urlOnlyKeys = []) {
+  const urlOnly = new Set(urlOnlyKeys)
   const out = {}
   for (const k of keys) {
     const u = urlParams.get(k)
-    const v = u !== null && u !== '' ? u : stored[k]
+    const v = u !== null && u !== '' ? u : (urlOnly.has(k) ? undefined : stored[k])
     if (v != null && v !== '') out[k] = v
   }
   return out
@@ -29,6 +32,16 @@ export function snapshotToQuery(state) {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(state)) if (v != null && v !== '') p.set(k, String(v))
   return p.toString()
+}
+
+// Drop urlOnly keys from a state snapshot before it's written to localStorage
+// (#217) — those fields still reflect into the URL via snapshotToQuery, just
+// not into storage, so a plain revisit can't silently inherit an old value.
+export function persistableState(state, urlOnlyKeys) {
+  const urlOnly = new Set(urlOnlyKeys)
+  const out = {}
+  for (const [k, v] of Object.entries(state)) if (!urlOnly.has(k)) out[k] = v
+  return out
 }
 
 // --- stateful registry (DOM/location glue) ---
@@ -44,12 +57,15 @@ export function register(field) {
 }
 
 // Register a plain form control by element id and re-persist on the given DOM
-// events. `checkbox: true` maps the checked state to '1'/''.
-export function bindControl(key, id, { events = ['change'], checkbox = false } = {}) {
+// events. `checkbox: true` maps the checked state to '1'/''. `urlOnly: true`
+// (#217) keeps the field shareable via URL but out of localStorage, so a plain
+// revisit never silently inherits a stale saved value.
+export function bindControl(key, id, { events = ['change'], checkbox = false, urlOnly = false } = {}) {
   const el = document.getElementById(id)
   if (!el) return null
   register({
     key,
+    urlOnly,
     get: () => (checkbox ? (el.checked ? '1' : '') : el.value),
     set: (v) => { if (checkbox) el.checked = v === '1'; else el.value = v },
   })
@@ -70,10 +86,12 @@ export function initial(key, fallback) {
   return s != null && s !== '' ? s : fallback
 }
 
+function urlOnlyKeys() { return fields.filter((f) => f.urlOnly).map((f) => f.key) }
+
 // Apply the merged URL+stored state to every registered field, then normalize the
 // address bar and storage to that merged state.
 export function load() {
-  const merged = resolveState(fields.map((f) => f.key), readStore(), new URLSearchParams(location.search))
+  const merged = resolveState(fields.map((f) => f.key), readStore(), new URLSearchParams(location.search), urlOnlyKeys())
   suspended = true
   try {
     for (const f of fields) if (merged[f.key] != null) { try { f.set(merged[f.key]) } catch (_) {} }
@@ -81,7 +99,8 @@ export function load() {
   save()
 }
 
-// Snapshot every field and write it to both the address bar and localStorage.
+// Snapshot every field and write it to both the address bar and localStorage
+// (minus urlOnly fields, which are address-bar-only — #217).
 export function save() {
   if (suspended) return
   const state = {}
@@ -91,5 +110,5 @@ export function save() {
   }
   const qs = snapshotToQuery(state)
   history.replaceState(null, '', qs ? `?${qs}` : location.pathname + location.hash)
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch (_) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState(state, urlOnlyKeys()))) } catch (_) {}
 }

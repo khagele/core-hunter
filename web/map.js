@@ -536,8 +536,11 @@ urlstate.register({ key: 'z', get: () => String(map.getZoom()), set: () => {} })
 // selection, so it can't use bindControl -- register directly, mirroring 'types'.
 urlstate.register({ key: 'hunter', get: () => window.currentHunters(), set: (v) => window.setHunters(v) })
 urlstate.bindControl('sender', 'f-sender', { events: ['change', 'input'] })
-urlstate.bindControl('from', 'f-from')
-urlstate.bindControl('to', 'f-to')
+// urlOnly (#217): from/to must never be silently restored from a stale saved
+// value on a plain revisit -- only an explicit ?from=&to= in the URL may show
+// something other than today. Still reflected into the URL for sharing.
+urlstate.bindControl('from', 'f-from', { urlOnly: true })
+urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
