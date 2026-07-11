@@ -19,7 +19,7 @@ export const APP_NAME = 'Mesh-Hunter'
 export const SPLASH_COPY = {
   intro: '',
   'waiting-gps': 'Waiting for a GPS fix…',
-  'gps-error': 'Could not get your location. Make sure location access is allowed for this site, then retry.',
+  'gps-error': 'Could not get your location. Make sure location access is allowed for this site, then tap Retry location.',
   'ble-error': 'Could not connect. Tap Connect to retry.',
 }
 
@@ -40,6 +40,6 @@ export const SPLASH_BASICS = [
 // live control group revealed through the scrim.
 export const SPLASH_CALLOUTS = {
   controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
-  menu: 'Settings and connection. Register your companion for analytics map access.',
-  fabs: 'Compass mode · send discover packet · hex or points',
+  menu: 'Settings and connection. Register your companion to contribute to the shared coverage map.',
+  fabs: 'Compass mode · send zero-hop discovery packet · hex or points',
 }
