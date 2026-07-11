@@ -14,6 +14,11 @@ export function splashState({ hasFix, connected, bleError, gpsError }) {
 // User-facing product name (internal identifiers stay core-hunter).
 export const APP_NAME = 'Mesh-Hunter'
 
+// One-sentence description of what the app does, shown above the
+// getting-started basics in the glass panel (#216).
+export const SPLASH_TAGLINE =
+  'A MeshCore node-hunting toolkit — pair your companion radio, drive around, and every direct reception lands on a live heat-map where hot = strong = close.'
+
 // Status line under the glass panel. `intro` has none — the Connect button is
 // the call to action there.
 export const SPLASH_COPY = {

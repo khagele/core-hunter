@@ -237,7 +237,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    pointing at each. A centre glass panel carries the name, getting-started
    basics and the §7 disclaimer; the Connect CTA anchors the bottom. */
 #splash { position: fixed; inset: 0; z-index: 550;
-  background: color-mix(in srgb, var(--ch-bg) 86%, transparent);
+  background: color-mix(in srgb, var(--ch-bg) 55%, transparent);
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
 body.onboarding #topbar,
@@ -249,13 +249,13 @@ body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #r
    topbar) while the overlay is already showing. */
 body.onboarding #onboarding-btn { display: none; }
 
+/* top/left are computed per-callout in app.js (positionCallouts), anchored to
+   each callout's actual target element instead of a hardcoded offset (#216). */
 .splash-callout { position: fixed; z-index: 561; max-width: 150px; padding: 8px 10px;
   border: 1px solid var(--ch-accent); border-radius: 10px; background: var(--ch-surface);
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 11.5px; line-height: 1.4; }
-.co-controls { top: 58px; left: 12px; }
-.co-menu { top: 58px; right: 12px; }
-.co-fabs { right: 70px; bottom: 206px; max-width: 168px; }
+.co-fabs { max-width: 168px; }
 
 .splash-panel { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
   width: min(300px, calc(100vw - 48px)); z-index: 561; padding: 18px; text-align: center;
@@ -265,6 +265,7 @@ body.onboarding #onboarding-btn { display: none; }
 .splash-mark { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--ch-accent) 18%, transparent); color: var(--ch-accent); }
 .splash-panel h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.splash-tagline { margin: 0 0 13px; font-size: 12.5px; line-height: 1.45; color: var(--ch-muted); }
 .splash-basics { list-style: none; margin: 0; padding: 13px 0; text-align: left;
   display: flex; flex-direction: column; gap: 9px;
   border-top: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); }

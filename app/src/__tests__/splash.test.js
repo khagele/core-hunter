@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from '../splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from '../splash.js'
 
 describe('splashState', () => {
   it('hides once a GPS fix has been acquired, regardless of other state', () => {
@@ -38,6 +38,13 @@ describe('SPLASH_BASICS', () => {
     expect(Array.isArray(SPLASH_BASICS)).toBe(true)
     expect(SPLASH_BASICS.length).toBeGreaterThan(0)
     for (const b of SPLASH_BASICS) expect(typeof b === 'string' && b.length > 0).toBe(true)
+  })
+})
+
+describe('SPLASH_TAGLINE', () => {
+  it('is a non-empty one-sentence description of what the app does', () => {
+    expect(typeof SPLASH_TAGLINE).toBe('string')
+    expect(SPLASH_TAGLINE.length).toBeGreaterThan(0)
   })
 })
 

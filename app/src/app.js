@@ -31,7 +31,8 @@ import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, APP_NAME } from './splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
+import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState } from './auth.js'
@@ -233,6 +234,7 @@ function updateLocateInfo(res) {
 // from splash.js. Called once at startup, before the splash is first shown.
 function initSplashContent() {
   el('splash-name').textContent = APP_NAME
+  el('splash-tagline').textContent = SPLASH_TAGLINE
   el('splash-disclaimer').textContent = SPLASH_DISCLAIMER
   el('co-controls').textContent = SPLASH_CALLOUTS.controls
   el('co-menu').textContent = SPLASH_CALLOUTS.menu
@@ -281,6 +283,31 @@ function refreshSplash() {
   if (reopened) el('connect-btn').hidden = true
   el('splash-status').textContent = reopened ? '' : (SPLASH_COPY[s] || '')
   el('splash-retry-gps').hidden = s !== 'gps-error'
+  // Only the reopened (post-connect "?") tour can be dismissed by tapping
+  // outside the highlights (#216) — the pre-connect states must stay put
+  // until the user actually connects/gets a fix.
+  state.splashDismissible = reopened
+  if (visible) positionCallouts()
+}
+
+// Anchors each onboarding callout to its real target element's current
+// position (#216), instead of a hardcoded pixel offset, so placement stays
+// correct across different screen sizes. Re-run on resize while visible.
+function positionCallouts() {
+  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  const place = (id, targetRect, opts) => {
+    const callout = el(id)
+    if (!callout) return
+    const { top, left } = calloutPosition(targetRect, viewport, callout.getBoundingClientRect(), opts)
+    callout.style.top = `${top}px`
+    callout.style.left = `${left}px`
+  }
+  const controls = el('topbar-controls')
+  if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
+  const menuBtn = el('settings-btn')
+  if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
+  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn')].filter(Boolean)
+  if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
 }
 
 // (Re-)starts the GPS watch, e.g. on connect or after the user retries
@@ -1284,6 +1311,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Onboarding: the "?" button re-opens the splash overlay; Close dismisses it.
   el('onboarding-btn').addEventListener('click', () => { state.showOnboarding = true; refreshSplash() })
   el('splash-close').addEventListener('click', () => { state.showOnboarding = false; refreshSplash() })
+  // Tapping the dimmed scrim itself (not the panel/callouts/close button)
+  // also dismisses the reopened tour (#216) — gated the same way as the
+  // Close button, so pre-connect states are never dismissible this way.
+  el('splash').addEventListener('click', (e) => {
+    if (e.target !== e.currentTarget || !state.splashDismissible) return
+    state.showOnboarding = false
+    refreshSplash()
+  })
+  window.addEventListener('resize', () => { if (!el('splash').hidden) positionCallouts() })
 
   el('discover-btn').addEventListener('click', sendDiscover)
 
