@@ -33,6 +33,13 @@ export function ageFade(rxAt, nowMs, windowMs) {
   return 1 - (1 - AGE_FADE_FLOOR) * frac
 }
 
+// heatWeight maps an RSSI (dBm) to a 0.05–1 weight for the map's Locate density
+// heatmap — the weak end (-115) → 0.05, the strong end (-70) → 1, clamped. A
+// small floor keeps weak-but-present receptions visible in the cloud.
+export function heatWeight(rssi) {
+  return Math.max(0.05, Math.min(1, (rssi + 115) / 45))
+}
+
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
 export function rssiTier(rssi, offset = 0) {
