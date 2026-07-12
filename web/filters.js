@@ -19,6 +19,14 @@ export function hunterOptionLabel(h) {
   return `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
 }
 
+// Row count for #f-hunter's expanded listbox (#240) — show every option up
+// to a cap so a long hunter list doesn't take over the screen, but never
+// fewer than 2 rows (even for 0-1 options) so it still reads as a listbox
+// rather than a single-line dropdown.
+export function hunterListboxSize(optionCount) {
+  return Math.min(Math.max(optionCount, 2), 8)
+}
+
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
 
 // Format a Date as a local-time `YYYY-MM-DDTHH:MM` string for datetime-local inputs.
@@ -122,7 +130,20 @@ if (typeof document !== 'undefined') {
   // f-hunter is registered directly with urlstate (map.js), not via bindControl
   // (a <select multiple>'s .value only returns the first selection) -- persist
   // it explicitly here, same as the f-types chips do.
-  document.getElementById('f-hunter').addEventListener('change', save)
+  const hunterSel = document.getElementById('f-hunter')
+  hunterSel.addEventListener('change', save)
+
+  // Expand to a multi-row listbox on focus (#240) so the multi-select is
+  // discoverable/usable without already knowing the ctrl/cmd+click gesture;
+  // collapse back to the compact 1-line footprint on blur.
+  hunterSel.addEventListener('focus', () => {
+    hunterSel.size = hunterListboxSize(hunterSel.options.length)
+    hunterSel.classList.add('expanded')
+  })
+  hunterSel.addEventListener('blur', () => {
+    hunterSel.removeAttribute('size')
+    hunterSel.classList.remove('expanded')
+  })
 
   for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
     const el = document.getElementById(id)
