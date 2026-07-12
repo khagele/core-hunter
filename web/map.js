@@ -6,7 +6,7 @@ import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
-import { packetTypeLabel } from './filters.js'
+import { packetTypeLabel } from './packettypes.js'
 
 let currentRole = 'guest'
 

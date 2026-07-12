@@ -1,28 +1,12 @@
 import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
-
-// Same packet-type set as the app's filter sheet (parity, #142).
-const FILTER_PACKET_TYPES = [
-  { value: 'Advert',      label: 'Advert' },
-  { value: 'GroupText',   label: 'Channel' },
-  { value: 'Response',    label: 'Response' },
-  { value: 'Request',     label: 'Request' },
-  { value: 'TextMessage', label: 'Direct msg' },
-  { value: 'Ack',         label: 'Ack' },
-  { value: 'Trace',       label: 'Trace' },
-]
+import { FILTER_PACKET_TYPES } from './packettypes.js'
 
 // Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
 // (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed
 // falls back to an 8-char pubkey prefix.
 export function hunterOptionLabel(h) {
   return `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
-}
-
-// Friendly label for a raw decoder packet_type — same mapping as the filter
-// chips, reused so map popups and other displays read the same way (#174).
-export function packetTypeLabel(rawType) {
-  return FILTER_PACKET_TYPES.find((t) => t.value === rawType)?.label ?? rawType
 }
 
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
