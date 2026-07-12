@@ -207,7 +207,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-account-section h3 { margin: 0 0 .4rem; }
 .ss-acc-status { color: var(--ch-muted); margin: 0 0 .5rem; }
 .ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
-.ss-acc-actions button { flex: 1 1 auto; }
+.ss-acc-actions > button { flex: 1 1 auto; }
+.ss-acc-mode-tabs { display: flex; gap: 14px; flex: 1 1 100%; }
+.ss-acc-mode-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
+  font-size: 14px; font-weight: 600; padding: 6px 2px; cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.ss-acc-mode-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
 .ss-acc-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
 .ss-acc-form input[type="text"],
 .ss-acc-form input[type="password"],
