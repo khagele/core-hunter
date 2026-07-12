@@ -41,15 +41,27 @@ export function topSenders(records, { ignore, count = 3, nowMs } = {}) {
     .slice(0, count)
 }
 
+// A node id can be a full 64-char pubkey; only the first 3 bytes are shown so
+// the target list never renders (and overlaps on) a full-length hex string.
+const ID_PREFIX_HEX_CHARS = 6
+
+function idPrefix(id) {
+  return id.slice(0, ID_PREFIX_HEX_CHARS)
+}
+
 // targetParts splits a sender row into a primary label and a muted secondary
-// prefix for the target list (#178). The byte-prefix is always surfaced when a
-// name resolves, so duplicate names and different-length prefixes of the same
-// node are distinguishable; unresolved rows just show the bare prefix.
+// prefix for the target list (#178, #215). The byte-prefix is always surfaced
+// when a name resolves, so duplicate names and different-length prefixes of
+// the same node are distinguishable. Unresolved rows show the prefix plus a
+// "name not resolved" marker as the primary line, so every row still reads
+// name-first even before resolution completes.
 export function targetParts(rec) {
   const id = rec.sender_id != null ? String(rec.sender_id) : ''
   const label = rec.sender_label ? String(rec.sender_label) : ''
-  if (label && id) return { primary: label, secondary: id }
-  return { primary: label || id || '—', secondary: '' }
+  if (!id) return { primary: label || '—', secondary: '' }
+  const prefix = idPrefix(id)
+  if (label) return { primary: label, secondary: prefix }
+  return { primary: `${prefix} (name not resolved)`, secondary: prefix }
 }
 
 export function relTime(rxAt, nowMs) {

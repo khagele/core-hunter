@@ -87,13 +87,17 @@ describe('relTime', () => {
 })
 
 describe('targetParts', () => {
-  it('shows name as primary and the id prefix as secondary when both exist', () => {
-    expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'a1b2c3' }))
+  it('shows name as primary and a 3-byte id prefix as secondary when both exist', () => {
+    expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'a1b2c3d4e5f6' }))
       .toEqual({ primary: 'Repeater-Zuid', secondary: 'a1b2c3' })
   })
-  it('shows the bare id when there is no name (no secondary)', () => {
-    expect(targetParts({ sender_label: null, sender_id: 'a1b2c3' }))
-      .toEqual({ primary: 'a1b2c3', secondary: '' })
+  it('does not pad ids shorter than 3 bytes', () => {
+    expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'abcd' }))
+      .toEqual({ primary: 'Repeater-Zuid', secondary: 'abcd' })
+  })
+  it('shows the id prefix plus a "name not resolved" marker as primary when there is no name, and the bare prefix as secondary', () => {
+    expect(targetParts({ sender_label: null, sender_id: 'a1b2c3d4e5f6' }))
+      .toEqual({ primary: 'a1b2c3 (name not resolved)', secondary: 'a1b2c3' })
   })
   it('falls back to a dash when neither is present', () => {
     expect(targetParts({ sender_label: null, sender_id: null }))

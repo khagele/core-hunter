@@ -25,20 +25,22 @@ function row(rec, nowMs, onSelect, selectedIds) {
   const check = document.createElement('span'); check.className = 'tl-check'; check.setAttribute('aria-hidden', 'true')
 
   const { primary, secondary } = targetParts(rec)
-  const label = document.createElement('span'); label.className = 'tl-label'
   const name = document.createElement('span'); name.className = 'tl-name'; name.textContent = primary
-  label.appendChild(name)
+
+  // Second line: short id prefix + RSSI + time-ago, right-aligned together so
+  // none of them ever overlaps the name line above (#215).
+  const meta = document.createElement('span'); meta.className = 'tl-meta'
   if (secondary) {
     const prefix = document.createElement('span'); prefix.className = 'tl-prefix'; prefix.textContent = secondary
-    label.appendChild(prefix)
+    meta.appendChild(prefix)
   }
-
   const rssi = document.createElement('span'); rssi.className = 'tl-rssi'
   rssi.textContent = String(rec.rssi ?? '—')
   const time = document.createElement('span'); time.className = 'tl-time'
   time.textContent = relTime(rec.rx_at, nowMs)
+  meta.append(rssi, time)
 
-  btn.append(check, label, rssi, time)
+  btn.append(check, name, meta)
   btn.addEventListener('click', () => onSelect && onSelect(rec.sender_id, rec.sender_label))
 
   li.appendChild(btn)
