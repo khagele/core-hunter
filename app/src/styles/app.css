@@ -130,6 +130,15 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
+/* Auto-discover FAB states (#232, #233): steady color shows on/off + whether
+   selected targets include a repeater (auto-target is reactive, not a
+   separate tap state — see toggleAutoPing/updateDiscoverBtnVisual). */
+#discover-btn.auto-on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
+#discover-btn.auto-target { color: var(--ch-accent-2); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent-2); }
+@keyframes discover-pulse { 0% { transform: scale(1); opacity: 1; } 70% { transform: scale(1.35); opacity: 0; } 100% { transform: scale(1.35); opacity: 0; } }
+#discover-btn.pulse::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid currentColor; animation: discover-pulse .5s ease-out; pointer-events: none; }
+
 /* Active-settings indicator: same accent dot, on the topbar settings button */
 #settings-btn.active { color: var(--ch-accent); }
 #settings-btn.active::after { content: ''; position: absolute; top: -2px; right: -2px;

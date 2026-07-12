@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -69,6 +69,44 @@ describe('topSenders', () => {
     ], { ignore: new Set(['b']), count: 3, nowMs: now })
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ sender_id: 'A', rssi: -60 })
+  })
+})
+
+describe('selectedRepeaterIds', () => {
+  it('returns selected ids whose most recent record has sender_role Repeater', () => {
+    const out = selectedRepeaterIds(
+      [rec({ sender_id: 'aa', sender_role: 'Repeater' }), rec({ sender_id: 'bb', sender_role: 'ChatNode' })],
+      new Set(['aa', 'bb'])
+    )
+    expect(out).toEqual(['aa'])
+  })
+  it('also treats relay-kind (last-hop) records as repeaters', () => {
+    const out = selectedRepeaterIds(
+      [rec({ sender_id: 'cc', sender_kind: 'relay', sender_role: null })],
+      new Set(['cc'])
+    )
+    expect(out).toEqual(['cc'])
+  })
+  it('ignores ids not in the selection', () => {
+    const out = selectedRepeaterIds(
+      [rec({ sender_id: 'aa', sender_role: 'Repeater' })],
+      new Set(['bb'])
+    )
+    expect(out).toEqual([])
+  })
+  it('uses the most recent record per id to decide repeater status', () => {
+    const out = selectedRepeaterIds(
+      [
+        rec({ sender_id: 'aa', sender_role: 'Repeater', rx_at: '2026-06-29T10:00:00Z' }),
+        rec({ sender_id: 'aa', sender_role: 'ChatNode', rx_at: '2026-06-29T10:05:00Z' }),
+      ],
+      new Set(['aa'])
+    )
+    expect(out).toEqual([])
+  })
+  it('returns an empty array for an empty or missing selection', () => {
+    expect(selectedRepeaterIds([rec({ sender_id: 'aa', sender_role: 'Repeater' })], new Set())).toEqual([])
+    expect(selectedRepeaterIds([rec({ sender_id: 'aa', sender_role: 'Repeater' })], null)).toEqual([])
   })
 })
 

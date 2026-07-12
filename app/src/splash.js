@@ -38,7 +38,7 @@ export const SPLASH_DISCLAIMER =
 export const SPLASH_BASICS = [
   'Open in Chrome or Bluefy (iOS)',
   'Pair your companion — tap Connect',
-  'Listens only — nothing sent unless you Discover',
+  'Listens only — nothing sent unless you enable Discover',
 ]
 
 // Spotlight callouts (was #119, updated for the #128 topbar). Each points at a
@@ -46,5 +46,5 @@ export const SPLASH_BASICS = [
 export const SPLASH_CALLOUTS = {
   controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
   menu: 'Settings and connection. Register your companion to contribute to the shared coverage map.',
-  fabs: 'Compass mode · send zero-hop discovery packet · hex or points',
+  fabs: 'Compass mode · toggle auto-discover — pings selected repeaters too · hex or points',
 }

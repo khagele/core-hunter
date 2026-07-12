@@ -64,6 +64,27 @@ export function targetParts(rec) {
   return { primary: `${prefix} (name not resolved)`, secondary: prefix }
 }
 
+// selectedRepeaterIds narrows a target selection down to the ids that behave
+// as repeaters, per the most recent record for each: either an Advert
+// explicitly reported DeviceRole Repeater (sender_role), or the id was only
+// ever heard as a relay-kind last-hop (see meshpacket.js). Used to decide
+// which selected targets get an auto trace-ping (#233) rather than only the
+// broadcast Discover.
+export function selectedRepeaterIds(records, selectedIds) {
+  if (!selectedIds || selectedIds.size === 0) return []
+  const bySender = new Map()
+  for (const r of records || []) {
+    if (r.sender_id == null) continue
+    const id = String(r.sender_id).toLowerCase()
+    if (!selectedIds.has(id)) continue
+    const prev = bySender.get(id)
+    if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
+  }
+  return [...bySender.entries()]
+    .filter(([, r]) => r.sender_role === 'Repeater' || r.sender_kind === 'relay')
+    .map(([id]) => id)
+}
+
 export function relTime(rxAt, nowMs) {
   if (rxAt == null || Number.isNaN(Date.parse(rxAt))) return '—'
   const s = Math.max(0, Math.round((nowMs - Date.parse(rxAt)) / 1000))
