@@ -284,7 +284,7 @@ export function createHuntMap(containerId) {
     if (map.getLayer('hex')) map.setLayoutProperty('hex', 'visibility', mode3D ? 'none' : 'visible')
     if (map.getLayer('hex-3d')) map.setLayoutProperty('hex-3d', 'visibility', mode3D ? 'visible' : 'none')
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
-    map.setTerrain(mode3D ? { source: 'terrain-dem', exaggeration: 1.5 } : null)
+    if (map.getSource('terrain-dem')) map.setTerrain(mode3D ? { source: 'terrain-dem', exaggeration: 1.5 } : null)
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
