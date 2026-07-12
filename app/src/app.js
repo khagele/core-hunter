@@ -675,7 +675,7 @@ function buildFilterSheet() {
         </div>
       </div>
       <div class="ss-ignore-section">
-        <h3>Ignored stations</h3>
+        <h3>Ignored senders</h3>
         <div id="ss-ignore-list"></div>
         <button id="ss-ignore-clear">Clear ignore-list</button>
       </div>
@@ -782,7 +782,7 @@ function renderIgnoreList(listEl) {
   if (state.ignore.size === 0) {
     const empty = document.createElement('p')
     empty.className = 'ss-ignore-empty'
-    empty.textContent = 'No ignored stations.'
+    empty.textContent = 'No ignored senders.'
     listEl.appendChild(empty)
     return
   }
@@ -842,9 +842,9 @@ function buildSettingsSheet() {
         <p id="ss-account-status" class="ss-acc-status">Not logged in</p>
         <div class="ss-acc-actions">
           <button id="ss-acc-register" type="button">Register</button>
-          <button id="ss-acc-login" type="button">Login</button>
+          <button id="ss-acc-login" type="button">Log in</button>
           <button id="ss-acc-link" type="button" hidden>Link this companion</button>
-          <button id="ss-acc-logout" type="button" hidden>Logout</button>
+          <button id="ss-acc-logout" type="button" hidden>Log out</button>
         </div>
         <form id="ss-acc-form" class="ss-acc-form" hidden>
           <input id="ss-acc-username" type="text" placeholder="Username" autocomplete="username" />
