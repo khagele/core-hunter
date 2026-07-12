@@ -24,17 +24,33 @@ export function bearingForHeading(heading) {
 }
 
 // nextCompassState advances the compass button through its Google-Maps-style
-// cycle: static -> follow (north up) -> follow + heading rotation -> follow
-// (north up). Leaving follow happens by panning the map, not via the button.
-export function nextCompassState({ follow, heading }) {
-  if (!follow) return { follow: true, heading: false }
-  return { follow: true, heading: !heading }
+// cycle: static -> follow (north up) -> follow + device heading -> follow +
+// GPS course ("driving mode", #242) -> follow (north up). Leaving follow
+// happens by panning the map, not via the button. `source` is the rotation
+// input: null (north up), 'device' (magnetometer), or 'course' (GPS
+// course-over-ground — steadier than the magnetometer while actually driving).
+export function nextCompassState({ follow, source }) {
+  if (!follow) return { follow: true, source: null }
+  if (source == null) return { follow: true, source: 'device' }
+  if (source === 'device') return { follow: true, source: 'course' }
+  return { follow: true, source: null }
 }
 
 // compassGlyph names the icon for a compass state: 'static' (not following),
-// 'following' (centred, north up), or 'heading' (map rotates with the device).
-// The FAB previews the NEXT state via compassGlyph(nextCompassState(...)), so it
-// shows what a tap will do rather than the current state.
-export function compassGlyph({ follow, heading }) {
-  return !follow ? 'static' : heading ? 'heading' : 'following'
+// 'following' (centred, north up), 'heading' (rotates with the device), or
+// 'driving' (rotates with GPS course-over-ground). The FAB previews the NEXT
+// state via compassGlyph(nextCompassState(...)), so it shows what a tap will
+// do rather than the current state.
+export function compassGlyph({ follow, source }) {
+  if (!follow) return 'static'
+  if (source === 'device') return 'heading'
+  if (source === 'course') return 'driving'
+  return 'following'
+}
+
+// resolveCourseHeading: GPS course is null when stationary/low-speed on most
+// devices (#242). Hold the last known heading instead of snapping to
+// north-up every time the hunter stops at a light.
+export function resolveCourseHeading(heading, lastKnown) {
+  return heading != null ? heading : lastKnown
 }

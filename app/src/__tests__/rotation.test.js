@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -32,30 +32,53 @@ describe('bearingForHeading', () => {
 })
 
 describe('nextCompassState', () => {
-  // Google-Maps-style cycle: static -> follow (north up) -> follow + heading
-  // rotation -> back to follow (north up). Panning drops to static elsewhere.
+  // Google-Maps-style cycle: static -> follow (north up) -> follow + device
+  // heading -> follow + GPS course ("driving mode", #242) -> back to follow
+  // (north up). Panning drops to static elsewhere. `source` is null (north
+  // up) | 'device' (magnetometer) | 'course' (GPS course-over-ground).
   it('static taps to following, north up', () => {
-    expect(nextCompassState({ follow: false, heading: false })).toEqual({ follow: true, heading: false })
-    expect(nextCompassState({ follow: false, heading: true })).toEqual({ follow: true, heading: false })
+    expect(nextCompassState({ follow: false, source: null })).toEqual({ follow: true, source: null })
+    expect(nextCompassState({ follow: false, source: 'device' })).toEqual({ follow: true, source: null })
+    expect(nextCompassState({ follow: false, source: 'course' })).toEqual({ follow: true, source: null })
   })
-  it('following (north up) taps to heading mode', () => {
-    expect(nextCompassState({ follow: true, heading: false })).toEqual({ follow: true, heading: true })
+  it('following (north up) taps to device-heading mode', () => {
+    expect(nextCompassState({ follow: true, source: null })).toEqual({ follow: true, source: 'device' })
   })
-  it('heading mode taps back to following, north up', () => {
-    expect(nextCompassState({ follow: true, heading: true })).toEqual({ follow: true, heading: false })
+  it('device-heading mode taps to GPS course (driving) mode', () => {
+    expect(nextCompassState({ follow: true, source: 'device' })).toEqual({ follow: true, source: 'course' })
+  })
+  it('GPS course mode taps back to following, north up', () => {
+    expect(nextCompassState({ follow: true, source: 'course' })).toEqual({ follow: true, source: null })
   })
 })
 
 describe('compassGlyph', () => {
   it('maps each compass state to its glyph', () => {
-    expect(compassGlyph({ follow: false, heading: false })).toBe('static')
-    expect(compassGlyph({ follow: true, heading: false })).toBe('following')
-    expect(compassGlyph({ follow: true, heading: true })).toBe('heading')
+    expect(compassGlyph({ follow: false, source: null })).toBe('static')
+    expect(compassGlyph({ follow: true, source: null })).toBe('following')
+    expect(compassGlyph({ follow: true, source: 'device' })).toBe('heading')
+    expect(compassGlyph({ follow: true, source: 'course' })).toBe('driving')
   })
   it('the previewed (next-state) glyph is what a tap produces, never static', () => {
     // The FAB icon previews the NEXT state, not the current one.
-    expect(compassGlyph(nextCompassState({ follow: false, heading: false }))).toBe('following') // panned → tap recenters
-    expect(compassGlyph(nextCompassState({ follow: true, heading: false }))).toBe('heading')   // centered → tap enables compass
-    expect(compassGlyph(nextCompassState({ follow: true, heading: true }))).toBe('following')  // compass → tap back to north-up
+    expect(compassGlyph(nextCompassState({ follow: false, source: null }))).toBe('following') // panned → tap recenters
+    expect(compassGlyph(nextCompassState({ follow: true, source: null }))).toBe('heading')     // centered → tap enables device heading
+    expect(compassGlyph(nextCompassState({ follow: true, source: 'device' }))).toBe('driving') // device heading → tap enables GPS course
+    expect(compassGlyph(nextCompassState({ follow: true, source: 'course' }))).toBe('following') // GPS course → tap back to north-up
+  })
+})
+
+describe('resolveCourseHeading', () => {
+  // GPS course is null when stationary/low-speed on most devices (#242).
+  // Hold the last known heading instead of snapping to north-up every time
+  // the hunter stops at a light.
+  it('uses the fresh heading when the fix has one', () => {
+    expect(resolveCourseHeading(90, 45)).toBe(90)
+  })
+  it('holds the last known heading when the fix has none', () => {
+    expect(resolveCourseHeading(null, 45)).toBe(45)
+  })
+  it('stays null when neither the fix nor the last known heading exist yet', () => {
+    expect(resolveCourseHeading(null, null)).toBe(null)
   })
 })

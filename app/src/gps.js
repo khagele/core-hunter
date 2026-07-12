@@ -12,7 +12,9 @@ export class Gps {
     if (!navigator.geolocation) throw new Error('geolocation unavailable');
     this._watchId = navigator.geolocation.watchPosition(
       (p) => {
-        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy };
+        // heading = course-over-ground, degrees clockwise from true north;
+        // null when stationary/low-speed on most devices (#242, driving mode).
+        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy, heading: p.coords.heading };
         if (onFix) onFix(this._last);
       },
       (err) => { if (onError) onError(err); },
