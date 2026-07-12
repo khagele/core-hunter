@@ -100,6 +100,29 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
   await expect(page.locator('#f-hunter')).toHaveValues(['abc123def456', 'def456abc123'])
 })
 
+test('with no saved/URL view and no data, the map opens on a neutral world view, not the old Belgium-ish default (#218)', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/')
+  // Leaflet snaps setView() to its internal pixel grid, so the center isn't
+  // exact at low zoom -- precision 1 (±0.05°) comfortably covers that drift.
+  const center = await page.evaluate(() => window.__mapCenter())
+  expect(center.lat).toBeCloseTo(20, 1)
+  expect(center.lng).toBeCloseTo(0, 1)
+  expect(await page.evaluate(() => window.__mapZoom())).toBe(2)
+})
+
+test('with no saved/URL view, the map snaps to today\'s actual points once fetched (#218)', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [
+    { lat: 60.2, lon: 24.9, rssi: -70, snr: -3, hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', rx_at: '2026-07-11T12:00:00Z' },
+  ] } }))
+  await page.goto('/')
+  await expect(async () => {
+    const center = await page.evaluate(() => window.__mapCenter())
+    expect(center.lat).toBeCloseTo(60.2, 1)
+    expect(center.lng).toBeCloseTo(24.9, 1)
+  }).toPass()
+})
+
 test('snap to hunter: selecting a single hunter fits bounds and drops a marker at the latest position (#195)', async ({ page }) => {
   await page.route('**/api/hunters*', (r) => r.fulfill({
     json: { hunters: [{ hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 2 }] },
