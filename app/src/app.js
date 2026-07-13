@@ -318,7 +318,7 @@ function startGpsWatch() {
       state.lastGpsFixAt = Date.now()
       if (state.map) state.map.setPosition(fix.lat, fix.lon)
       if (!state.hasFix) { state.hasFix = true; refreshSplash() }
-      if (compassState.source === 'course') applyCourseHeading(fix.heading)
+      if (compassState.source === 'course') applyCourseHeading(fix.heading, fix.speed)
     },
     () => { state.gpsError = true; refreshSplash() }
   )
@@ -1214,13 +1214,14 @@ function disableHeadingRotation() {
 // magnetometer while actually driving. No permission prompt needed (GPS is
 // already active); applyCourseHeading is called from startGpsWatch's onFix
 // whenever this mode is active, holding the last known heading across the
-// null readings most devices report while stationary/low-speed.
+// null/NaN readings devices report while stationary and gating out
+// low-speed course jitter (see resolveCourseHeading).
 let lastCourseHeading = null
 function enableCourseRotation() { lastCourseHeading = null; return true }
 function disableCourseRotation() { lastCourseHeading = null }
-function applyCourseHeading(heading) {
-  const resolved = resolveCourseHeading(heading, lastCourseHeading)
-  if (resolved == null || !state.map) return
+function applyCourseHeading(heading, speed) {
+  const resolved = resolveCourseHeading(heading, lastCourseHeading, speed)
+  if (!Number.isFinite(resolved) || !state.map) return
   lastCourseHeading = resolved
   state.map.setBearing(bearingForHeading(resolved))
 }

@@ -17,8 +17,11 @@ export function compassHeading(reading) {
 
 // bearingForHeading converts a compass heading into the map bearing that puts
 // that heading at the top of the screen (rotate the map opposite to the
-// heading). Input is normalized to 0..360 first.
+// heading). Input is normalized to 0..360 first. Non-finite input (the W3C
+// Geolocation spec makes heading NaN while stationary) maps to north-up
+// instead of poisoning the map transform with a NaN bearing.
 export function bearingForHeading(heading) {
+  if (!Number.isFinite(heading)) return 0
   const h = ((heading % 360) + 360) % 360
   return h === 0 ? 0 : -h
 }
@@ -48,9 +51,19 @@ export function compassGlyph({ follow, source }) {
   return 'following'
 }
 
-// resolveCourseHeading: GPS course is null when stationary/low-speed on most
-// devices (#242). Hold the last known heading instead of snapping to
-// north-up every time the hunter stops at a light.
-export function resolveCourseHeading(heading, lastKnown) {
-  return heading != null ? heading : lastKnown
+// Below this ground speed (m/s) a reported GPS course is treated as noise:
+// many devices emit a jittery but non-null heading while crawling, which
+// would swing the map at every stop. ~2 m/s ≈ 7 km/h, comfortably above a
+// walking shuffle and below the slowest driving this mode targets.
+export const COURSE_MIN_SPEED_MS = 2
+
+// resolveCourseHeading: per the W3C Geolocation spec, heading is null when
+// unavailable and NaN while stationary (#242) — hold the last known heading
+// in both cases instead of snapping to north-up at every light. When the fix
+// carries a usable speed below COURSE_MIN_SPEED_MS the heading is ignored as
+// low-speed jitter; a null/NaN speed (unavailable) falls back to trusting
+// heading availability alone.
+export function resolveCourseHeading(heading, lastKnown, speed) {
+  if (Number.isFinite(speed) && speed < COURSE_MIN_SPEED_MS) return lastKnown
+  return Number.isFinite(heading) ? heading : lastKnown
 }

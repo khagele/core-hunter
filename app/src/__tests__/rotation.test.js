@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading, COURSE_MIN_SPEED_MS } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -28,6 +28,12 @@ describe('bearingForHeading', () => {
   it('normalizes headings outside 0..360', () => {
     expect(bearingForHeading(450)).toBe(-90)
     expect(bearingForHeading(-90)).toBe(-270)
+  })
+  it('guards non-finite headings to north-up instead of a NaN bearing', () => {
+    // GeolocationCoordinates.heading is NaN when stationary per the W3C spec
+    // (iOS Safari follows it) — a NaN bearing would corrupt the map transform.
+    expect(bearingForHeading(NaN)).toBe(0)
+    expect(bearingForHeading(Infinity)).toBe(0)
   })
 })
 
@@ -80,5 +86,26 @@ describe('resolveCourseHeading', () => {
   })
   it('stays null when neither the fix nor the last known heading exist yet', () => {
     expect(resolveCourseHeading(null, null)).toBe(null)
+  })
+  it('holds the last known heading on a NaN heading (W3C: stationary devices report NaN, not null)', () => {
+    // The exact "stopped at a light" path this feature targets on iOS Safari.
+    expect(resolveCourseHeading(NaN, 45)).toBe(45)
+    expect(resolveCourseHeading(NaN, null)).toBe(null)
+  })
+  it('ignores the reported heading below the minimum speed (low-speed course jitter)', () => {
+    // Some devices keep reporting a noisy non-null heading while crawling —
+    // gate on speed so the map does not swing to low-speed course noise.
+    expect(resolveCourseHeading(90, 45, 1)).toBe(45)
+    expect(resolveCourseHeading(90, 45, 0)).toBe(45)
+    expect(resolveCourseHeading(90, null, 1)).toBe(null)
+  })
+  it('uses the fresh heading at or above the minimum speed', () => {
+    expect(resolveCourseHeading(90, 45, COURSE_MIN_SPEED_MS)).toBe(90)
+    expect(resolveCourseHeading(90, 45, 13.9)).toBe(90)
+  })
+  it('falls back to heading availability when speed is unavailable (null/NaN per spec)', () => {
+    expect(resolveCourseHeading(90, 45, null)).toBe(90)
+    expect(resolveCourseHeading(90, 45, NaN)).toBe(90)
+    expect(resolveCourseHeading(90, 45, undefined)).toBe(90)
   })
 })

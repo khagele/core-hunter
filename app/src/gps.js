@@ -13,8 +13,9 @@ export class Gps {
     this._watchId = navigator.geolocation.watchPosition(
       (p) => {
         // heading = course-over-ground, degrees clockwise from true north;
-        // null when stationary/low-speed on most devices (#242, driving mode).
-        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy, heading: p.coords.heading };
+        // null when unavailable, NaN while stationary (W3C spec). speed in
+        // m/s (null when unavailable) gates low-speed course jitter (#242).
+        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy, heading: p.coords.heading, speed: p.coords.speed };
         if (onFix) onFix(this._last);
       },
       (err) => { if (onError) onError(err); },
