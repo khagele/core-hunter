@@ -7,7 +7,7 @@ import { packetTypeLabel } from './filters.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
-// a vector basemap (OpenFreeMap) unlocks 3D buildings/terrain in the follow-up
+// a vector basemap (OpenFreeMap) unlocks 3D buildings in the follow-up
 // 3D phase. The createHuntMap(...) API is unchanged so app.js stays as-is.
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -26,12 +26,11 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 
 // 3D mode (#147 phase 2): the FAB just tilts the camera and swaps the flat hex
 // layer for its fill-extrusion twin — same 'hex' source, height added per
-// feature (extrusionHeight). Terrain is a key-free AWS Terrarium raster-dem
-// (new third-party host — see docs/2026-07-11-3d-mode.md); buildings reuse the
-// OpenFreeMap style's own "openmaptiles"/"building" source, already fetched
-// for the 2D basemap, so 3D adds no new building-data request.
+// feature (extrusionHeight). Buildings reuse the OpenFreeMap style's own
+// "openmaptiles"/"building" source, already fetched for the 2D basemap, so 3D
+// adds no new data request. (Terrain was dropped — see docs/2026-07-11-3d-mode.md:
+// its AWS DEM tiles kept the map in a perpetual load loop and froze weaker GPUs.)
 const PITCH_3D = 60
-const TERRAIN_DEM_TILES = ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png']
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
@@ -164,12 +163,6 @@ export function createHuntMap(containerId) {
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
           'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.75 } })
     }
-    if (!map.getSource('terrain-dem')) {
-      map.addSource('terrain-dem', { type: 'raster-dem', tiles: TERRAIN_DEM_TILES, encoding: 'terrarium', tileSize: 256, maxzoom: 15 })
-      map.setMaxPitch(85)
-    }
-    // setStyle() (theme switch) clears style-scoped terrain — re-apply if 3D was on.
-    if (mode3D) map.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 })
     if (!map.getLayer('locate-heat')) map.addLayer({ id: 'locate-heat', type: 'heatmap', source: 'locate',
       layout: { visibility: locateVisible ? 'visible' : 'none' },
       paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
@@ -213,7 +206,23 @@ export function createHuntMap(containerId) {
   map.on('mouseenter', 'points', () => { map.getCanvas().style.cursor = 'pointer' })
   map.on('mouseleave', 'points', () => { map.getCanvas().style.cursor = '' })
 
+  // MapLibre latches onto its 400×300 zero-size fallback when the map is built
+  // before #map has laid out — a backgrounded tab, a PWA cold start, or (here)
+  // creation after `await loadConfig()` in DOMContentLoaded. Its own resize
+  // tracking doesn't reliably clear that initial latch, so the map renders in a
+  // corner (or blank), and any later camera move — notably the 3D toggle's
+  // pitch easeTo — just repaints at the wrong size. Reconcile the canvas to
+  // its container whenever they disagree; cheap enough to run each render tick.
+  function syncSize() {
+    const c = map.getContainer(), cv = map.getCanvas()
+    if (c.clientWidth && c.clientHeight &&
+        (Math.abs(cv.clientWidth - c.clientWidth) > 1 || Math.abs(cv.clientHeight - c.clientHeight) > 1)) {
+      map.resize()
+    }
+  }
+
   function draw() {
+    syncSize()
     if (!map.getSource('points')) return   // style not ready yet
     const records = lastRecords, nowMs = Date.now()
     map.getSource('hex').setData(mode !== 'points' ? buildHexFC(records) : EMPTY)
@@ -277,14 +286,13 @@ export function createHuntMap(containerId) {
   function onGestureRotate(cb) { rotateCb = cb }
   function setLayerMode(m) { mode = m; draw() }
   // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex layer for its
-  // extruded twin, shows buildings, and turns terrain on/off (#147 phase 2).
+  // extruded twin, and shows 3D buildings (#147 phase 2).
   function set3D(v) {
     mode3D = !!v
     map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
     if (map.getLayer('hex')) map.setLayoutProperty('hex', 'visibility', mode3D ? 'none' : 'visible')
     if (map.getLayer('hex-3d')) map.setLayoutProperty('hex-3d', 'visibility', mode3D ? 'visible' : 'none')
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
-    if (map.getSource('terrain-dem')) map.setTerrain(mode3D ? { source: 'terrain-dem', exaggeration: 1.5 } : null)
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
