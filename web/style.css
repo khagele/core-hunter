@@ -18,8 +18,12 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #bar button { cursor:pointer; }
 /* #f-hunter is a <select multiple> (#196); without a fixed height it defaults
    to a ~4-row listbox that wrecks the single-line toolbar. Scrolls internally
-   when more options are selected/hovered than fit. */
+   when more options are selected/hovered than fit. Expands on focus (#240,
+   filters.js sets the `size` attribute) so the multi-select is discoverable;
+   #bar is a fixed, high-z-index overlay, so the taller row just covers more
+   of the map underneath rather than pushing any layout around. */
 #f-hunter { height:28px; min-width:120px; }
+#f-hunter.expanded { height:auto; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 .cs-layer-toggle { display:inline-flex; gap:8px; }
 .cs-layer-toggle[hidden] { display:none; }
