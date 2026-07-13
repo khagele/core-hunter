@@ -48,6 +48,12 @@ export async function postAuth(path, body) {
   }
 }
 
+export function submitLabelForMode(mode) {
+  if (mode === 'login') return 'Log in'
+  if (mode === 'register') return 'Create account'
+  return 'Submit'
+}
+
 export function accountDisplayState(me, rxPubkey) {
   const guest = !me || me.role === 'guest' || !me.username
   if (guest) {

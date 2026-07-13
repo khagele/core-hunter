@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth, accountDisplayState } from '../auth.js'
+import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth, accountDisplayState, submitLabelForMode } from '../auth.js'
 
 describe('validateRegistration', () => {
   const ok = { username: 'alice', password: '0123456789', companionPubkey: 'ab'.repeat(32) }
@@ -86,6 +86,18 @@ describe('accountDisplayState', () => {
   it('does not offer link when no companion connected', () => {
     const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: [] }, '')
     expect(s.showLink).toBe(false)
+  })
+})
+
+describe('submitLabelForMode', () => {
+  it('labels the login mode', () => {
+    expect(submitLabelForMode('login')).toBe('Log in')
+  })
+  it('labels the register mode', () => {
+    expect(submitLabelForMode('register')).toBe('Create account')
+  })
+  it('falls back to a generic label for an unknown mode', () => {
+    expect(submitLabelForMode(null)).toBe('Submit')
   })
 })
 

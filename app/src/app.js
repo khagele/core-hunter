@@ -35,7 +35,7 @@ import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALL
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
-import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState } from './auth.js'
+import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -858,8 +858,10 @@ function buildSettingsSheet() {
         <h3>Account</h3>
         <p id="ss-account-status" class="ss-acc-status">Not logged in</p>
         <div class="ss-acc-actions">
-          <button id="ss-acc-register" type="button">Register</button>
-          <button id="ss-acc-login" type="button">Log in</button>
+          <div class="ss-acc-mode-tabs" role="tablist" aria-label="Register or log in">
+            <button id="ss-acc-register" class="ss-acc-mode-tab" type="button" role="tab">Register</button>
+            <button id="ss-acc-login" class="ss-acc-mode-tab" type="button" role="tab">Log in</button>
+          </div>
           <button id="ss-acc-link" type="button" hidden>Link this companion</button>
           <button id="ss-acc-logout" type="button" hidden>Log out</button>
         </div>
@@ -868,8 +870,8 @@ function buildSettingsSheet() {
           <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" autocomplete="current-password" />
           <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" autocomplete="email" hidden />
           <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
-          <div class="ss-acc-form-actions">
-            <button id="ss-acc-submit" type="submit">Submit</button>
+          <div id="ss-acc-form-actions" class="ss-acc-form-actions">
+            <button id="ss-acc-submit" class="ss-connect" type="submit">Submit</button>
             <button id="ss-acc-cancel" type="button">Cancel</button>
           </div>
         </form>
@@ -1001,8 +1003,16 @@ function buildSettingsSheet() {
     el('ss-acc-username').value = ''
     el('ss-acc-password').value = ''
     el('ss-acc-email').value = ''
+    el('ss-acc-submit').textContent = submitLabelForMode(mode)
+    el('ss-acc-register').classList.toggle('active', mode === 'register')
+    el('ss-acc-login').classList.toggle('active', mode === 'login')
   }
-  function closeAccForm() { el('ss-acc-form').hidden = true; accFormMode = null }
+  function closeAccForm() {
+    el('ss-acc-form').hidden = true
+    accFormMode = null
+    el('ss-acc-register').classList.remove('active')
+    el('ss-acc-login').classList.remove('active')
+  }
   function accMsg(text, ok) {
     const m = el('ss-acc-msg'); m.textContent = text; m.hidden = false
     m.classList.toggle('ok', !!ok)
@@ -1018,6 +1028,15 @@ function buildSettingsSheet() {
     openAccForm('register')
   })
   el('ss-acc-cancel').addEventListener('click', closeAccForm)
+
+  // Keep the submit button reachable once the on-screen keyboard opens — the
+  // settings sheet is a full-page scrollable overlay with no viewport-resize
+  // handling, so the keyboard can otherwise cover the actions/error row.
+  for (const id of ['ss-acc-username', 'ss-acc-password']) {
+    el(id).addEventListener('focus', () => {
+      setTimeout(() => el('ss-acc-form-actions').scrollIntoView({ block: 'nearest' }), 300)
+    })
+  }
 
   el('ss-acc-link').addEventListener('click', async () => {
     if (!state.rxPubkey) return
