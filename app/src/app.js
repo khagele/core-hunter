@@ -1244,7 +1244,7 @@ function updateLayerIcon() {
 }
 
 // ---------------------------------------------------------------------------
-// 2D/3D mode toggle (#147 phase 2) — signal as extruded hex bars + buildings/terrain
+// 2D/3D mode toggle (#147 phase 2) — signal as extruded hex bars + 3D buildings
 // ---------------------------------------------------------------------------
 
 let mode3D = false
