@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from '../signal.js'
 
 describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
   it('maps the strong end to 1 and clamps above', () => {
@@ -43,6 +43,22 @@ describe('rssiTier — fixed dBm bands (hot = strong = close)', () => {
   it('applies calibration offset before banding', () => {
     // -92 + 5 = -87 → warm
     expect(rssiTier(-92, 5)).toBe('warm')
+  })
+})
+
+describe('extrusionHeight — RSSI tier → 3D hex-bar height (metres)', () => {
+  it('is taller for a stronger (hotter) tier', () => {
+    expect(extrusionHeight(-70)).toBeGreaterThan(extrusionHeight(-85))
+    expect(extrusionHeight(-85)).toBeGreaterThan(extrusionHeight(-95))
+    expect(extrusionHeight(-95)).toBeGreaterThan(extrusionHeight(-105))
+    expect(extrusionHeight(-105)).toBeGreaterThan(extrusionHeight(-120))
+  })
+  it('is 0 for a cell with no RSSI reading', () => {
+    expect(extrusionHeight(null)).toBe(0)
+  })
+  it('applies the calibration offset before banding, same as rssiTier', () => {
+    // -92 + 5 = -87 → warm, same height as a direct -87 reading
+    expect(extrusionHeight(-92, 5)).toBe(extrusionHeight(-87))
   })
 })
 

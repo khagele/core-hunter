@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
@@ -24,8 +24,17 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 
+// 3D mode (#147 phase 2): the FAB just tilts the camera and swaps the flat hex
+// layer for its fill-extrusion twin — same 'hex' source, height added per
+// feature (extrusionHeight). Terrain is a key-free AWS Terrarium raster-dem
+// (new third-party host — see docs/2026-07-11-3d-mode.md); buildings reuse the
+// OpenFreeMap style's own "openmaptiles"/"building" source, already fetched
+// for the 2D basemap, so 3D adds no new building-data request.
+const PITCH_3D = 60
+const TERRAIN_DEM_TILES = ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png']
+
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -49,7 +58,7 @@ export function createHuntMap(containerId) {
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
   let mode = 'both', lastRecords = [], lastSelected = null, onLocateCb = null, locateVisible = true
-  let highlightId = null, onMarkerFocusCb = null, rotateCb = null
+  let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false, locateMarkers = []
@@ -86,8 +95,10 @@ export function createHuntMap(containerId) {
     for (const [id, c] of cells) {
       const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
       const tier = rssiTier(c.best, currentOffset())
+      // height is only read by the 3D fill-extrusion twin (hex-3d); the flat
+      // 'hex' layer ignores it. Same source for both, per the decision log.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
-        properties: { color: cssVar(tierColorVar(tier)), op: fillOpacity(tier) } })
+        properties: { color: cssVar(tierColorVar(tier)), op: fillOpacity(tier), height: extrusionHeight(c.best, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -133,7 +144,32 @@ export function createHuntMap(containerId) {
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
       paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': 0.5 } })
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
+      layout: { visibility: mode3D ? 'none' : 'visible' },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
+    // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
+    // fill-extrusion-opacity doesn't support data-driven expressions (unlike
+    // fill-opacity on the flat layer), so it's a flat constant here — the tier
+    // is still visible via colour + height.
+    if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
+      layout: { visibility: mode3D ? 'visible' : 'none' },
+      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.85 } })
+    // Buildings reuse the hosted style's own vector source (already fetched for
+    // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
+    // bare fallback, hence the source guard.
+    if (map.getSource('openmaptiles') && !map.getLayer('buildings-3d')) {
+      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+        layout: { visibility: mode3D ? 'visible' : 'none' },
+        paint: { 'fill-extrusion-color': cssVar('--ch-building'),
+          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
+          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.75 } })
+    }
+    if (!map.getSource('terrain-dem')) {
+      map.addSource('terrain-dem', { type: 'raster-dem', tiles: TERRAIN_DEM_TILES, encoding: 'terrarium', tileSize: 256, maxzoom: 15 })
+      map.setMaxPitch(85)
+    }
+    // setStyle() (theme switch) clears style-scoped terrain — re-apply if 3D was on.
+    if (mode3D) map.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 })
     if (!map.getLayer('locate-heat')) map.addLayer({ id: 'locate-heat', type: 'heatmap', source: 'locate',
       layout: { visibility: locateVisible ? 'visible' : 'none' },
       paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
@@ -240,6 +276,16 @@ export function createHuntMap(containerId) {
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
   function setLayerMode(m) { mode = m; draw() }
+  // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex layer for its
+  // extruded twin, shows buildings, and turns terrain on/off (#147 phase 2).
+  function set3D(v) {
+    mode3D = !!v
+    map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
+    if (map.getLayer('hex')) map.setLayoutProperty('hex', 'visibility', mode3D ? 'none' : 'visible')
+    if (map.getLayer('hex-3d')) map.setLayoutProperty('hex-3d', 'visibility', mode3D ? 'visible' : 'none')
+    if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
+    if (map.getSource('terrain-dem')) map.setTerrain(mode3D ? { source: 'terrain-dem', exaggeration: 1.5 } : null)
+  }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
   function applyBasemap() { overlaysReady = false; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }   // re-add overlays after the style swap (+ fallback if it fails)
@@ -251,7 +297,7 @@ export function createHuntMap(containerId) {
     wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, set3D, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
 }
 
 function popupHtml(r, selectedIds) {

@@ -1244,6 +1244,36 @@ function updateLayerIcon() {
 }
 
 // ---------------------------------------------------------------------------
+// 2D/3D mode toggle (#147 phase 2) — signal as extruded hex bars + buildings/terrain
+// ---------------------------------------------------------------------------
+
+let mode3D = false
+
+// Icon shows the CURRENT mode, same convention as the layer-toggle FAB next to it.
+const MODE3D_ICONS = {
+  '2d': `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="14" height="14" rx="1.5"/>
+  </svg>`,
+  '3d': `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+    <path d="M10 2l7 4v8l-7 4-7-4V6z"/>
+    <path d="M3 6l7 4 7-4M10 10v8"/>
+  </svg>`,
+}
+const MODE3D_LABELS = { '2d': 'Switch to 3D view', '3d': 'Switch to 2D view' }
+
+function update3DIcon() {
+  const key = mode3D ? '3d' : '2d'
+  el('mode3d-toggle').innerHTML = MODE3D_ICONS[key]
+  el('mode3d-toggle').setAttribute('aria-label', MODE3D_LABELS[key])
+}
+
+function toggle3D() {
+  mode3D = !mode3D
+  update3DIcon()
+  if (state.map) state.map.set3D(mode3D)
+}
+
+// ---------------------------------------------------------------------------
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
@@ -1452,6 +1482,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   updateLayerIcon()
   el('layer-toggle').addEventListener('click', cycleLayer)
+
+  update3DIcon()
+  el('mode3d-toggle').addEventListener('click', toggle3D)
 
   // Compass button — always visible; cycles static → follow (north up) →
   // follow + device heading → follow + GPS course/driving mode (#242). See

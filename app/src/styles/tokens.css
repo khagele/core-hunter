@@ -18,6 +18,7 @@
 
   --ch-bar-track: #1b2230;   /* HUD signal-bar track */
   --ch-border:    rgba(255,255,255,0.08);
+  --ch-building:  #39465a;   /* 3D-mode building extrusions (#147) */
 }
 
 /* ---- LIGHT theme: warm paper + teal accent (its own identity, not inverted dark) ---- */
@@ -40,4 +41,5 @@
 
   --ch-bar-track: #d8d2c4;   /* HUD signal-bar track (light) */
   --ch-border:    rgba(0,0,0,0.10);
+  --ch-building:  #cfc7b6;   /* 3D-mode building extrusions (#147) */
 }

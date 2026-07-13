@@ -51,3 +51,11 @@ export function rssiTier(rssi, offset = 0) {
   if (v >= -110) return 'cool'
   return 'cold'
 }
+
+// extrusionHeight maps an RSSI tier to a 3D hex-bar height in metres (#147
+// phase 2). Bucketed by the same fixed dBm bands as rssiTier/tierColorVar, so
+// a bar's height and colour always agree on the same tier.
+const EXTRUSION_HEIGHT = { hot: 90, warm: 68, mid: 48, cool: 30, cold: 15, none: 0 }
+export function extrusionHeight(rssi, offset = 0) {
+  return EXTRUSION_HEIGHT[rssiTier(rssi, offset)]
+}
