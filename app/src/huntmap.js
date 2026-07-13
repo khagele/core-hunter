@@ -223,7 +223,16 @@ export function createHuntMap(containerId) {
     const next = appendTrailPoint(trail, lat, lon)
     if (next !== trail) { trail = next; if (map.getSource('trail')) map.getSource('trail').setData(buildTrailFC()) }
     if (map.getSource('here')) map.getSource('here').setData(buildHereFC())
-    if (follow) { map.jumpTo({ center: [lon, lat], zoom: acquired ? map.getZoom() : ACQUIRE_ZOOM }); acquired = true }
+    // jumpTo is an instant, non-animated camera set — calling it while the
+    // user has an active gesture (e.g. pinch-zoom) in progress interrupts
+    // MapLibre's own interaction handler and cancels the gesture (#236: this
+    // is why pinch-to-zoom didn't work while compass mode was following). A
+    // GPS fix landing mid-pinch now just skips this recenter; the next fix
+    // (or the user releasing the gesture) catches up.
+    if (follow && !map.isZooming() && !map.isMoving()) {
+      map.jumpTo({ center: [lon, lat], zoom: acquired ? map.getZoom() : ACQUIRE_ZOOM })
+      acquired = true
+    }
   }
   function centerOn(lat, lon) { map.easeTo({ center: [lon, lat], duration: 400 }) }
   function recenter() { if (!lastPos) return; follow = true; map.jumpTo({ center: [lastPos[1], lastPos[0]] }); if (onFollow) onFollow(true) }
