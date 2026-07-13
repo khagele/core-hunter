@@ -3,6 +3,15 @@ import { fetchMe } from './auth.js'
 
 const $ = (id) => document.getElementById(id)
 
+// Status-code parity with the app's login error handling (auth.js/app.js) so
+// the same failure reads the same way on both surfaces (#174).
+export function loginErrorMessage(status) {
+  if (status === 401) return 'Wrong username or password.'
+  if (status === 403) return 'This account is disabled.'
+  if (status === 429) return 'Too many attempts — wait a minute.'
+  return 'Login failed — check your connection.'
+}
+
 async function doLogin() {
   const err = $('login-error')
   err.hidden = true
@@ -11,14 +20,22 @@ async function doLogin() {
     password: $('login-pass').value,
     remember: $('login-remember').checked,
   }
-  const r = await fetch(`${API_BASE}/api/auth/login`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!r.ok) { err.hidden = false; return null }
-  return await r.json()
+  let status
+  try {
+    const r = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (r.ok) return await r.json()
+    status = r.status
+  } catch (_) {
+    status = 0
+  }
+  err.textContent = loginErrorMessage(status)
+  err.hidden = false
+  return null
 }
 
 async function doLogout() {

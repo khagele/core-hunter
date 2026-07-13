@@ -1,16 +1,6 @@
 import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
-
-// Same packet-type set as the app's filter sheet (parity, #142).
-const FILTER_PACKET_TYPES = [
-  { value: 'Advert',      label: 'Advert' },
-  { value: 'GroupText',   label: 'Channel' },
-  { value: 'Response',    label: 'Response' },
-  { value: 'Request',     label: 'Request' },
-  { value: 'TextMessage', label: 'Direct msg' },
-  { value: 'Ack',         label: 'Ack' },
-  { value: 'Trace',       label: 'Trace' },
-]
+import { FILTER_PACKET_TYPES } from './packettypes.js'
 
 // Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
 // (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed

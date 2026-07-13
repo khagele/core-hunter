@@ -14,6 +14,23 @@ export function isFilterActive(filter) {
   return false
 }
 
+// Friendly labels for the decoder's raw packet_type values — shared by the
+// filter chips, the receptions log, and map popups so the same reception
+// reads the same way everywhere (#174).
+export const FILTER_PACKET_TYPES = [
+  { value: 'Advert',      label: 'Advert' },
+  { value: 'GroupText',   label: 'Channel' },
+  { value: 'Response',    label: 'Response' },
+  { value: 'Request',     label: 'Request' },
+  { value: 'TextMessage', label: 'Direct msg' },
+  { value: 'Ack',         label: 'Ack' },
+  { value: 'Trace',       label: 'Trace' },
+]
+
+export function packetTypeLabel(rawType) {
+  return FILTER_PACKET_TYPES.find((t) => t.value === rawType)?.label ?? rawType
+}
+
 export function makeFilter(opts) {
   const { sender, types, windowMs, directOnly, ignore } = opts
   // Target selection is a set of sender ids — the map/Locate run over their

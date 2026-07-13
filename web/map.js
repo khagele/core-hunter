@@ -6,6 +6,7 @@ import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
+import { packetTypeLabel } from './packettypes.js'
 
 let currentRole = 'guest'
 
@@ -93,7 +94,7 @@ async function drawPoints() {
     const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
     L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}${locBtn}`)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
@@ -307,12 +308,20 @@ function renderLocate(points, senderId) {
   updateLocateInfo(res, senderId)
 }
 
+// AGENTS.md §7: any output implying a target's location must state it is
+// inferred from radio measurements, not GPS-tracked. Web-side counterpart of
+// the app's SPLASH_DISCLAIMER, adapted for the multi-hunter context.
+const LOCATE_DISCLAIMER =
+  'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where hunters were when they heard it.'
+
 function updateLocateInfo(res, senderId) {
   const box = document.getElementById('locate-info')
   box.hidden = false
   const s = res.stats
+  const disclaimer = `<div class="lc-muted lc-disclaimer">${LOCATE_DISCLAIMER}</div>`
   if (!res.centroid) {
     box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+).</div>`
+      + disclaimer
     return
   }
   const isHash = !!senderId && !isFullPubkey(senderId)
@@ -325,6 +334,7 @@ function updateLocateInfo(res, senderId) {
     + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
     + encHint + hashNote
     + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. Within driven area · ~hundreds of m · no TX calibration.</div>`
+    + disclaimer
     + locateLegendHtml()
 }
 
@@ -475,7 +485,10 @@ async function drawObserverPoints(src, layer, ring) {
       ? { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.12 }
       : { radius: 4, color: col, weight: 1, fillColor: col, fillOpacity: fillOpacity(tier) }
     L.circleMarker([pt.lat, pt.lon], opts)
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>observer ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}`)
+      // Glossary (#174): 'observer' -> 'hunter' (our own term for the capturer);
+      // 'relay'/'node' left as-is, tied to the CS-relays/CS-adverts toggle wording
+      // (CoreScope's own source distinction, not our sender/repeater glossary).
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>hunter ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(layer)
   }
   if (unresolved.size) {

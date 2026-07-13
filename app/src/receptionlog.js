@@ -1,5 +1,6 @@
 import { relTime } from './feed.js'
 import { rssiTier, tierColorVar } from './signal.js'
+import { packetTypeLabel } from './filters.js'
 
 // Receptions log (#130) — a frameless, log-style tail over the map that
 // replaces the bottom Messages panel. Newest reception at the bottom; a fixed
@@ -55,7 +56,7 @@ const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyV
 function lineMeta(r) {
   if (r._text) return '“' + r._text + '”'
   if (r.channel_name) return r.channel_name
-  return r.packet_type || ''
+  return packetTypeLabel(r.packet_type) || ''
 }
 
 // createReceptionLog builds the log inside `rootId` and returns

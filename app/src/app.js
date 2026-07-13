@@ -21,7 +21,7 @@ import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
-import { makeFilter, isFilterActive, DEFAULT_FILTER } from './filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { isSettingsActive } from './settings.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset } from './signal.js'
@@ -658,16 +658,6 @@ async function disconnectAll(silent) {
 // ---------------------------------------------------------------------------
 // Filter sheet helpers
 // ---------------------------------------------------------------------------
-
-const FILTER_PACKET_TYPES = [
-  { value: 'Advert',      label: 'Advert' },
-  { value: 'GroupText',   label: 'Channel' },
-  { value: 'Response',    label: 'Response' },
-  { value: 'Request',     label: 'Request' },
-  { value: 'TextMessage', label: 'Direct msg' },
-  { value: 'Ack',         label: 'Ack' },
-  { value: 'Trace',       label: 'Trace' },
-]
 
 function buildFilterSheet() {
   const sheet = el('filter-sheet')
