@@ -35,7 +35,7 @@ import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph } from './rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -327,6 +327,7 @@ function startGpsWatch() {
       state.lastGpsFixAt = Date.now()
       if (state.map) state.map.setPosition(fix.lat, fix.lon)
       if (!state.hasFix) { state.hasFix = true; refreshSplash() }
+      if (compassState.source === 'course') applyCourseHeading(fix.heading, fix.speed)
     },
     () => { state.gpsError = true; refreshSplash() }
   )
@@ -1253,8 +1254,8 @@ function updateLayerIcon() {
 //
 // The FAB icon previews the state a tap will PRODUCE (via nextCompassState),
 // not the current one — so it reads as an action. Because every next-state is
-// a follow-state, only the 'following' (centre) and 'heading' (compass) glyphs
-// are ever shown; there is no 'static' icon.
+// a follow-state, only 'following' (centre), 'heading' (device compass), and
+// 'driving' (GPS course, #242) glyphs are ever shown; there is no 'static' icon.
 const COMPASS_ICONS = {
   following: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <circle cx="10" cy="10" r="4"/>
@@ -1266,14 +1267,19 @@ const COMPASS_ICONS = {
   heading: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <polygon points="10,2 15,17 10,13.2 5,17" fill="currentColor" stroke="none"/>
   </svg>`,
+  driving: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="5,11 10,6 15,11"/>
+    <polyline points="5,16 10,11 15,16"/>
+  </svg>`,
 }
 const COMPASS_LABELS = {
   following: 'Rotate map with heading (compass mode)',
-  heading: 'Back to north-up',
+  heading: 'Switch to driving mode (GPS course)',
+  driving: 'Back to north-up',
   static: 'Resume following (compass mode)',
 }
 
-let compassState = { follow: true, heading: false }
+let compassState = { follow: true, source: null }
 function updateCompassIcon() {
   // Icon = the state a tap produces (preview); label = the action from here.
   el('recenter-btn').innerHTML = COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
@@ -1306,6 +1312,22 @@ function disableHeadingRotation() {
   if (!orientationHandler) return
   window.removeEventListener(ORIENTATION_EVENT, orientationHandler)
   orientationHandler = null
+}
+
+// GPS-course rotation ("driving mode", #242) — steadier than the
+// magnetometer while actually driving. No permission prompt needed (GPS is
+// already active); applyCourseHeading is called from startGpsWatch's onFix
+// whenever this mode is active, holding the last known heading across the
+// null/NaN readings devices report while stationary and gating out
+// low-speed course jitter (see resolveCourseHeading).
+let lastCourseHeading = null
+function enableCourseRotation() { lastCourseHeading = null; return true }
+function disableCourseRotation() { lastCourseHeading = null }
+function applyCourseHeading(heading, speed) {
+  const resolved = resolveCourseHeading(heading, lastCourseHeading, speed)
+  if (!Number.isFinite(resolved) || !state.map) return
+  lastCourseHeading = resolved
+  state.map.setBearing(bearingForHeading(resolved))
 }
 
 function cycleLayer() {
@@ -1432,32 +1454,40 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('layer-toggle').addEventListener('click', cycleLayer)
 
   // Compass button — always visible; cycles static → follow (north up) →
-  // follow + heading rotation. See the compass-mode section above.
+  // follow + device heading → follow + GPS course/driving mode (#242). See
+  // the compass-mode section above.
   updateCompassIcon()
   el('recenter-btn').addEventListener('click', async () => {
     if (!state.map) return
     const next = nextCompassState(compassState)
-    if (next.heading && !compassState.heading) {
+    if (next.source === 'device' && compassState.source !== 'device') {
       // iOS permission prompt must run inside this click; denied → stay north-up
-      if (!(await enableHeadingRotation())) next.heading = false
+      if (!(await enableHeadingRotation())) next.source = null
     }
-    if (!next.heading && compassState.heading) disableHeadingRotation()
-    if (!next.heading) state.map.setBearing(0)
-    compassState.heading = next.heading
+    if (next.source === 'course' && compassState.source !== 'course') enableCourseRotation()
+    if (compassState.source === 'device' && next.source !== 'device') disableHeadingRotation()
+    if (compassState.source === 'course' && next.source !== 'course') disableCourseRotation()
+    if (next.source == null) state.map.setBearing(0)
+    compassState.source = next.source
     if (next.follow && !compassState.follow) state.map.recenter() // fires onFollowChange → icon update
     else updateCompassIcon()
   })
   if (state.map) state.map.onFollowChange((follow) => {
     compassState.follow = follow
-    if (!follow && compassState.heading) { compassState.heading = false; disableHeadingRotation() }
+    if (!follow && compassState.source) {
+      if (compassState.source === 'device') disableHeadingRotation()
+      else if (compassState.source === 'course') disableCourseRotation()
+      compassState.source = null
+    }
     updateCompassIcon()
   })
   // Manual two-finger rotation takes over from heading-follow (the map keeps
   // the gestured bearing; the button returns it to north-up).
   if (state.map) state.map.onGestureRotate(() => {
-    if (!compassState.heading) return
-    compassState.heading = false
-    disableHeadingRotation()
+    if (!compassState.source) return
+    if (compassState.source === 'device') disableHeadingRotation()
+    else disableCourseRotation()
+    compassState.source = null
     updateCompassIcon()
   })
   if (state.map) state.map.onLocate(updateLocateInfo)

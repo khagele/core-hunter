@@ -12,7 +12,10 @@ export class Gps {
     if (!navigator.geolocation) throw new Error('geolocation unavailable');
     this._watchId = navigator.geolocation.watchPosition(
       (p) => {
-        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy };
+        // heading = course-over-ground, degrees clockwise from true north;
+        // null when unavailable, NaN while stationary (W3C spec). speed in
+        // m/s (null when unavailable) gates low-speed course jitter (#242).
+        this._last = { lat: p.coords.latitude, lon: p.coords.longitude, acc_m: p.coords.accuracy, heading: p.coords.heading, speed: p.coords.speed };
         if (onFix) onFix(this._last);
       },
       (err) => { if (onError) onError(err); },
