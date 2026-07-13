@@ -28,7 +28,9 @@ import { effectivePlotOffset } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
-import { buildDiscoverFrame } from './discover.js'
+import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
+import { selectedRepeaterIds } from './feed.js'
+import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
@@ -110,6 +112,13 @@ const state = {
   // Epoch ms when the page last became hidden during an active session, or
   // null when visible / not connected (#199).
   hiddenAt: null,
+  // Most recent captured rows, cached from drawOnce so the auto-ping tick
+  // (its own timer, outside the render loop) can derive selected-repeater
+  // status without re-querying IndexedDB (#232, #233).
+  lastRows: [],
+  // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
+  // position at the last fire, for the movement half of the fire gate.
+  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null },
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +411,7 @@ async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
     const rows = await state.queue.takeAll()
+    state.lastRows = rows
     const now = Date.now()
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
     enrichNames(rows)
@@ -415,6 +425,7 @@ async function drawOnce() {
     // map); all = every captured reception. The toggle is log-only.
     if (state.rxLog) state.rxLog.render(filteredRows, rows, now)
     if (state.targetList) state.targetList.render(rows, state.ignore, now, selected)
+    updateDiscoverBtnVisual()
   } catch (_) {
     // silent — render failure must not crash the loop
   }
@@ -471,13 +482,96 @@ async function drainLoop() {
 }
 
 // ---------------------------------------------------------------------------
-// Single-shot discover
+// Discover + auto-ping (#232, #233)
 // ---------------------------------------------------------------------------
 
 function sendDiscover() {
   if (!state.connected || !state.transport) return
   const tag = crypto.getRandomValues(new Uint8Array(4))
   state.transport.send(buildDiscoverFrame(tag)).catch(() => {})
+}
+
+// One byte-prefix hash per hop, same convention as Discover's
+// DISCOVER_PREFIX_ONLY — first byte of the target's pubkey/id.
+function sendTracePing(id) {
+  if (!state.connected || !state.transport) return
+  const hashByte = parseInt(String(id).slice(0, 2), 16)
+  if (Number.isNaN(hashByte)) return
+  const tag = crypto.getRandomValues(new Uint32Array(1))[0]
+  state.transport.send(buildTracePathFrame(tag, 0, [hashByte])).catch(() => {})
+}
+
+// Brief pulse feedback (#232) on the Discover FAB every time a ping actually
+// goes out — retriggerable via the remove/reflow/add dance so back-to-back
+// fires each get a fresh animation instead of the class no-op'ing.
+function pulseDiscoverBtn() {
+  const btn = el('discover-btn')
+  if (!btn) return
+  btn.classList.remove('pulse')
+  void btn.offsetWidth
+  btn.classList.add('pulse')
+}
+
+// Currently-selected targets that behave as repeaters, per the most recent
+// cached row for each (#233's "if the selected list contains repeaters").
+function selectedRepeaterTargets() {
+  const selected = selectedSet()
+  if (!selected) return []
+  return selectedRepeaterIds(state.lastRows, selected)
+}
+
+// Steady FAB appearance: off / auto-discover-only / auto-discover+target-ping
+// — the third is automatic (driven by selection), not a separate tap state.
+function updateDiscoverBtnVisual() {
+  const btn = el('discover-btn')
+  if (!btn) return
+  const targeting = state.autoPing.enabled && selectedRepeaterTargets().length > 0
+  btn.classList.toggle('auto-on', state.autoPing.enabled)
+  btn.classList.toggle('auto-target', targeting)
+  btn.setAttribute('aria-label', !state.autoPing.enabled ? 'Discover'
+    : targeting ? 'Auto-discover + target ping: on' : 'Auto-discover: on')
+}
+
+// Runs on its own timer (independent of the 1s render tick) so auto-ping
+// keeps a consistent cadence regardless of render load.
+function autoPingTick() {
+  if (!state.autoPing.enabled || !state.connected) return
+  const fix = state.gps.latest()
+  const now = Date.now()
+  const fire = shouldAutoFire({
+    lastFireAt: state.autoPing.lastFireAt,
+    lastLat: state.autoPing.lastLat,
+    lastLon: state.autoPing.lastLon,
+    now,
+    lat: fix ? fix.lat : null,
+    lon: fix ? fix.lon : null,
+  })
+  if (!fire) return
+  state.autoPing.lastFireAt = now
+  if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
+  sendDiscover()
+  pulseDiscoverBtn()
+  for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
+    setTimeout(() => sendTracePing(id), delayMs)
+  }
+}
+
+function stopAutoPing() {
+  state.autoPing.enabled = false
+  if (state.autoPing.timer) { clearInterval(state.autoPing.timer); state.autoPing.timer = null }
+  updateDiscoverBtnVisual()
+}
+
+// Tapping the FAB toggles auto-discover on/off — no separate manual one-shot;
+// turning on fires immediately rather than waiting for the first tick.
+function toggleAutoPing() {
+  if (!state.connected) return
+  if (state.autoPing.enabled) { stopAutoPing(); return }
+  state.autoPing.enabled = true
+  state.autoPing.lastFireAt = null
+  if (!state.autoPing.timer) state.autoPing.timer = setInterval(autoPingTick, 1000)
+  autoPingTick()
+  updateDiscoverBtnVisual()
 }
 
 // ---------------------------------------------------------------------------
@@ -637,6 +731,7 @@ async function disconnectAll(silent) {
   state.rxPubkey = ''
   state.sf = null
   el('discover-btn').disabled = true
+  stopAutoPing()
 
   if (state.wakeLock) state.wakeLock.disable()
   if (state.publisher) { state.publisher.end(); state.publisher = null }
@@ -1264,6 +1359,7 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender
   refreshFilterState()
+  updateDiscoverBtnVisual()
 })
 
 // ---------------------------------------------------------------------------
@@ -1330,7 +1426,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   window.addEventListener('resize', () => { if (!el('splash').hidden) positionCallouts() })
 
-  el('discover-btn').addEventListener('click', sendDiscover)
+  el('discover-btn').addEventListener('click', toggleAutoPing)
 
   updateLayerIcon()
   el('layer-toggle').addEventListener('click', cycleLayer)
