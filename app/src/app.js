@@ -36,6 +36,7 @@ import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
+import { SOUND_MODES, nextSoundMode, shouldPing, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -69,6 +70,21 @@ function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
 }
 
+// Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
+// like the attenuator; unknown stored values fall back to off. Also migrates
+// the pre-#255 4-state values (a couple of days of dogfooding only, never
+// released) onto the collapsed 3-state set.
+const SOUND_MODE_MIGRATION = { ping: 'rxtx', ambient: 'full', music: 'full' }
+function loadSoundMode() {
+  const v = localStorage.getItem('core-hunter-sound')
+  if (SOUND_MODE_MIGRATION[v]) return SOUND_MODE_MIGRATION[v]
+  return SOUND_MODES.includes(v) ? v : 'off'
+}
+
+function saveSoundMode(mode) {
+  try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
+}
+
 const state = {
   transport: null,
   gps: new Gps(),
@@ -93,6 +109,7 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  soundMode: loadSoundMode(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
@@ -315,7 +332,7 @@ function positionCallouts() {
   if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
   const menuBtn = el('settings-btn')
   if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
-  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn')].filter(Boolean)
+  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn'), el('mode3d-toggle'), el('sound-toggle')].filter(Boolean)
   if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
 }
 
@@ -383,6 +400,11 @@ async function processFrame(dv) {
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
   updateHud(rec)
+  // Sound (#145): a morse dit per DIRECT reception inside the active filter
+  // set — you hear exactly what the map plots, minus relayed traffic.
+  if (shouldPing(rec, state.soundMode, makeFilter({ ...state.filter, ignore: state.ignore }), Date.now())) {
+    sound.ping(rec.rssi, effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb))
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -552,8 +574,9 @@ function autoPingTick() {
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
   sendDiscover()
   pulseDiscoverBtn()
+  sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
-    setTimeout(() => sendTracePing(id), delayMs)
+    setTimeout(() => { sendTracePing(id); sound.txBlip('trace') }, delayMs)
   }
 }
 
@@ -1274,6 +1297,48 @@ function toggle3D() {
 }
 
 // ---------------------------------------------------------------------------
+// Sound modes (#145, collapsed to 3 states per #255) — off / rxtx / full,
+// cycled by the sound FAB
+// ---------------------------------------------------------------------------
+
+const sound = createSoundEngine()
+
+// Icon shows the CURRENT mode, same convention as the layer/2D-3D FABs:
+// slashed speaker (off), speaker + one wave (rxtx — pings/tx only), speaker +
+// two waves (full — soundbed + generative music + pings/tx).
+const SOUND_SPEAKER = '<path d="M4 8h3l4-3v10l-4-3H4z"/>'
+const SOUND_ICONS = {
+  off: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    ${SOUND_SPEAKER}<line x1="13.5" y1="7.5" x2="17.5" y2="12.5"/><line x1="17.5" y1="7.5" x2="13.5" y2="12.5"/>
+  </svg>`,
+  rxtx: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    ${SOUND_SPEAKER}<path d="M13.5 7.5a4.2 4.2 0 0 1 0 5"/>
+  </svg>`,
+  full: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    ${SOUND_SPEAKER}<path d="M13.5 7.5a4.2 4.2 0 0 1 0 5"/><path d="M15.5 5.5a7 7 0 0 1 0 9"/>
+  </svg>`,
+}
+const SOUND_LABELS = {
+  off: 'Toggle sound (off)',
+  rxtx: 'Toggle sound (reception + transmit cues only)',
+  full: 'Toggle sound (soundbed + music + reception/transmit cues)',
+}
+
+function updateSoundIcon() {
+  const btn = el('sound-toggle')
+  btn.innerHTML = SOUND_ICONS[state.soundMode]
+  btn.setAttribute('aria-label', SOUND_LABELS[state.soundMode])
+  btn.classList.toggle('on', state.soundMode !== 'off')
+}
+
+function cycleSound() {
+  state.soundMode = nextSoundMode(state.soundMode)
+  saveSoundMode(state.soundMode)
+  sound.setMode(state.soundMode)   // the FAB tap is the user gesture Web Audio needs
+  updateSoundIcon()
+}
+
+// ---------------------------------------------------------------------------
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
@@ -1485,6 +1550,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   update3DIcon()
   el('mode3d-toggle').addEventListener('click', toggle3D)
+
+  // Sound FAB (#145). A persisted non-off mode is restored here; the engine
+  // resumes its (autoplay-suspended) context on the first tap anywhere.
+  updateSoundIcon()
+  el('sound-toggle').addEventListener('click', cycleSound)
+  if (state.soundMode !== 'off') sound.setMode(state.soundMode)
 
   // Compass button — always visible; cycles static → follow (north up) →
   // follow + device heading → follow + GPS course/driving mode (#242). See
