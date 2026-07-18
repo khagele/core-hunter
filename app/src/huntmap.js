@@ -4,6 +4,7 @@ import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
+import { squareRing } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -31,6 +32,11 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 // adds no new data request. (Terrain was dropped — see docs/2026-07-11-3d-mode.md:
 // its AWS DEM tiles kept the map in a perpetual load loop and froze weaker GPUs.)
 const PITCH_3D = 60
+// Points-in-3D (#250): a small standing "pillar" per reception, same tier
+// height/colour as hex-3d's bars, so it reads clearly in the tilted view
+// instead of disappearing under the hex/building geometry (a flat circle
+// layer can't be raised — MapLibre circles always sit on the ground plane).
+const POINT_PILLAR_HALF_WIDTH_M = 3
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
@@ -78,6 +84,24 @@ export function createHuntMap(containerId) {
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)   // age-fade within the window (#149)
       feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
         properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade } })
+    }
+    return fc(feats)
+  }
+  // 3D twin of buildPointsFC (#250): a small square footprint per reception,
+  // extruded to the same tier height as hex-3d's bars (extrusionHeight), so
+  // hotter/closer receptions stand taller — same colour/height language as the
+  // hex bars, just narrower, so points still read distinctly from hex cells.
+  // fill-extrusion-opacity is a flat constant (same MapLibre limitation noted
+  // on hex-3d — no data-driven opacity), so age-fade isn't represented here;
+  // colour + height still carry the tier.
+  function buildPoints3DFC(records) {
+    const feats = []
+    for (const r of records) {
+      if (r.lat == null || r.lon == null) continue
+      const tier = rssiTier(r.rssi, currentOffset())
+      const ring = squareRing(r.lat, r.lon, POINT_PILLAR_HALF_WIDTH_M)
+      feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), height: extrusionHeight(r.rssi, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -137,7 +161,7 @@ export function createHuntMap(containerId) {
   }
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
-    for (const id of ['trail', 'hex', 'locate', 'points', 'highlight', 'here']) {
+    for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
@@ -168,8 +192,18 @@ export function createHuntMap(containerId) {
       paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
         'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.2, cssVar('--ch-sig-mid'), 0.6, cssVar('--ch-sig-warm'), 1, cssVar('--ch-sig-hot')] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
+      layout: { visibility: mode3D ? 'none' : 'visible' },
       paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
         'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1, 'circle-stroke-opacity': ['get', 'op'] } })
+    // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
+    // tier colour/height as hex-3d — reads clearly at pitch instead of a flat
+    // circle disappearing under the hex bars/buildings. Separate source (its
+    // Polygon footprints can't double as the flat layer's Point geometry, the
+    // way hex/hex-3d share one source), same constant-opacity limitation.
+    if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
+      layout: { visibility: mode3D ? 'visible' : 'none' },
+      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.9 } })
     if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
       paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
     if (!map.getLayer('here')) map.addLayer({ id: 'here', type: 'circle', source: 'here',
@@ -193,7 +227,9 @@ export function createHuntMap(containerId) {
   armStyleFallback()   // safety net if the initial hosted style never loads
 
   // Point tap → open popup + roll the receptions-log playhead (#130). Registered
-  // once; fires only while the 'points' layer exists.
+  // once; fires only while the 'points'/'points-3d' layer exists. Bound to
+  // both layers (#250) — whichever one is visible for the current 2D/3D mode
+  // is the one that can actually receive the click.
   function onPointClick(e) {
     const f = e.features && e.features[0]; if (!f) return
     const r = lastRecords.find((x) => String(x.id) === String(f.properties.id)); if (!r) return
@@ -202,9 +238,11 @@ export function createHuntMap(containerId) {
       .setLngLat([r.lon, r.lat]).setHTML(popupHtml(r, lastSelected)).addTo(map)
     wireIsolate(popup, r); wireIgnore(popup, r)
   }
-  map.on('click', 'points', onPointClick)
-  map.on('mouseenter', 'points', () => { map.getCanvas().style.cursor = 'pointer' })
-  map.on('mouseleave', 'points', () => { map.getCanvas().style.cursor = '' })
+  for (const layerId of ['points', 'points-3d']) {
+    map.on('click', layerId, onPointClick)
+    map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
+  }
 
   // MapLibre latches onto its 400×300 zero-size fallback when the map is built
   // before #map has laid out — a backgrounded tab, a PWA cold start, or (here)
@@ -227,6 +265,7 @@ export function createHuntMap(containerId) {
     const records = lastRecords, nowMs = Date.now()
     map.getSource('hex').setData(mode !== 'points' ? buildHexFC(records) : EMPTY)
     map.getSource('points').setData(mode !== 'hex' ? buildPointsFC(records, nowMs) : EMPTY)
+    map.getSource('points-3d').setData(mode !== 'hex' ? buildPoints3DFC(records) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
@@ -285,13 +324,16 @@ export function createHuntMap(containerId) {
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
   function setLayerMode(m) { mode = m; draw() }
-  // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex layer for its
-  // extruded twin, and shows 3D buildings (#147 phase 2).
+  // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex/points
+  // layers for their extruded twins, and shows 3D buildings (#147 phase 2,
+  // points added in #250).
   function set3D(v) {
     mode3D = !!v
     map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
     if (map.getLayer('hex')) map.setLayoutProperty('hex', 'visibility', mode3D ? 'none' : 'visible')
     if (map.getLayer('hex-3d')) map.setLayoutProperty('hex-3d', 'visibility', mode3D ? 'visible' : 'none')
+    if (map.getLayer('points')) map.setLayoutProperty('points', 'visibility', mode3D ? 'none' : 'visible')
+    if (map.getLayer('points-3d')) map.setLayoutProperty('points-3d', 'visibility', mode3D ? 'visible' : 'none')
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
