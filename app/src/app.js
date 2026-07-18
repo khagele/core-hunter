@@ -878,8 +878,8 @@ function buildTargetSheet() {
     pinnedEl: el('ts-pinned'),
     // Whole-row tap toggles this sender in the target set; the sheet stays open
     // so several can be picked in a row (#178).
-    onSelect: (id, label) => {
-      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, toggle: true } }))
+    onSelect: (id, label, ids) => {
+      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, ids, toggle: true } }))
     },
   })
 
@@ -1395,6 +1395,11 @@ function updateTargetChip() {
 // Target selection is a live union of sender ids (#178). detail = null clears;
 // { id, toggle:true } adds/removes one (the checkbox rows); { id } replaces the
 // whole selection with just that sender (a map popup's "Isolate sender").
+// A target-list row can represent several prefix-compatible id variants of
+// the same physical node (#267, decided 2026-07-18: multi-id selection) —
+// detail.ids carries that full group so toggling/selecting the row catches
+// receptions under any variant, not just the one currently displayed. Falls
+// back to the single id when a caller (e.g. the map popup) has no group.
 document.addEventListener('hunt:isolate-sender', (e) => {
   const d = e.detail
   const ids = new Set(state.filter.sender ? state.filter.sender.ids : [])
@@ -1403,8 +1408,14 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   } else {
     const key = String(d.id).toLowerCase()
     if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
-    if (d.toggle) { ids.has(key) ? ids.delete(key) : ids.add(key) }
-    else { ids.clear(); ids.add(key) }
+    const group = Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [key]
+    if (d.toggle) {
+      const anySelected = group.some((k) => ids.has(k))
+      group.forEach((k) => (anySelected ? ids.delete(k) : ids.add(k)))
+    } else {
+      ids.clear()
+      group.forEach((k) => ids.add(k))
+    }
   }
   state.filter.sender = ids.size ? { ids: [...ids] } : null
   updateTargetChip()

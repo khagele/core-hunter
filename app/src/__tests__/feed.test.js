@@ -49,6 +49,66 @@ describe('senderList', () => {
   })
 })
 
+describe('dedupeSenders prefix-aware merging (#267)', () => {
+  it('merges advert/discover/relay rows for the same node when ids are prefix-compatible and the resolved name matches', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4e5f6', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:00:00Z' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:02:00Z' }),
+    ], {})
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ sender_id: 'a1b2c3', rx_at: '2026-06-29T10:05:00Z' })
+    expect(out[0].merged_ids).toEqual(['a1b2', 'a1b2c3', 'a1b2c3d4e5f6'])
+  })
+  it('treats prefix compatibility case-insensitively', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'A1B2C3D4', sender_label: 'Node' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Node' }),
+    ], {})
+    expect(out).toHaveLength(1)
+  })
+  it('does not merge rows with the same name when the ids are not prefix-compatible', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'aabbcc', sender_label: 'Same-Name' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'ffeedd', sender_label: 'Same-Name' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['aabbcc', 'ffeedd'])
+  })
+  it('does not merge prefix-compatible ids before a name has resolved', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: null }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: null }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3d4'])
+  })
+  it('does not merge prefix-compatible ids with different resolved names', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: 'Node-One' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Node-Two' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3d4'])
+  })
+  it('never merges channel_name rows, even when ids are prefix-compatible and names match', () => {
+    const out = senderList([
+      rec({ sender_kind: 'channel_name', sender_id: 'ab', sender_label: 'Same' }),
+      rec({ sender_kind: 'channel_name', sender_id: 'abcd', sender_label: 'Same' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['ab', 'abcd'])
+  })
+  it('always exposes merged_ids as a lowercased array, even for a row with no merge partner', () => {
+    const out = senderList([rec({ sender_kind: 'advert_pubkey', sender_id: 'ABCD', sender_label: 'Solo' })], {})
+    expect(out[0].merged_ids).toEqual(['abcd'])
+  })
+  it('merges the same physical node in the recency/RSSI ranking too', () => {
+    const now = Date.parse('2026-06-29T10:05:00Z')
+    const out = topSenders([
+      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: 'Repeater-Zuid', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rssi: -80, rx_at: '2026-06-29T10:00:00Z' }),
+    ], { count: 3, nowMs: now })
+    expect(out).toHaveLength(1)
+  })
+})
+
 describe('topSenders', () => {
   const now = Date.parse('2026-06-29T10:05:00Z')
 

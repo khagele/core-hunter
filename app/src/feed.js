@@ -3,9 +3,66 @@
 // attributed via path[last] of a relayed FLOOD packet (see meshpacket.js).
 const TARGET_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey', 'relay'])
 
+// Kinds whose id is a hex prefix of the same underlying pubkey space (#267):
+// advert carries the full pubkey, discover/relay carry shorter prefixes of
+// it. channel_name's id is a decrypted display name, not part of that space,
+// and must never be prefix-merged with the others.
+const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
+
+function isPrefixCompatible(a, b) {
+  return a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a))
+}
+
+// Two rows only merge once a resolved name is present on both sides and it
+// matches — an unresolved (null) label never counts as a match, and a shared
+// prefix alone isn't enough (the name is the safety margin against two real
+// nodes that happen to share a display name).
+function sameResolvedName(a, b) {
+  if (!a || !b) return false
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase()
+}
+
+// mergePrefixGroups clusters the per-exact-id rows that name the same
+// physical node — same resolved name, and one id is a hex-prefix of the
+// other (#267) — into a single row per cluster, keeping the most recent
+// reception as the row's display record. `merged_ids` carries every id in
+// the cluster (lowercased) so a target-list selection can catch receptions
+// tagged with any prefix variant, not just the one currently shown.
+function mergePrefixGroups(entries) {
+  const parent = entries.map((_, i) => i)
+  function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] } return i }
+  function union(i, j) { const ri = find(i); const rj = find(j); if (ri !== rj) parent[ri] = rj }
+
+  for (let i = 0; i < entries.length; i++) {
+    const [idI, recI] = entries[i]
+    if (!HEX_PREFIX_KINDS.has(recI.sender_kind)) continue
+    for (let j = i + 1; j < entries.length; j++) {
+      const [idJ, recJ] = entries[j]
+      if (!HEX_PREFIX_KINDS.has(recJ.sender_kind)) continue
+      if (!isPrefixCompatible(idI.toLowerCase(), idJ.toLowerCase())) continue
+      if (!sameResolvedName(recI.sender_label, recJ.sender_label)) continue
+      union(i, j)
+    }
+  }
+
+  const clusters = new Map()
+  for (let i = 0; i < entries.length; i++) {
+    const root = find(i)
+    if (!clusters.has(root)) clusters.set(root, [])
+    clusters.get(root).push(entries[i])
+  }
+
+  return [...clusters.values()].map((group) => {
+    const merged_ids = group.map(([id]) => id.toLowerCase()).sort()
+    const [, best] = group.reduce((a, b) => (Date.parse(b[1].rx_at) > Date.parse(a[1].rx_at) ? b : a))
+    return { ...best, merged_ids }
+  })
+}
+
 // dedupeSenders collapses receptions into one row per heard sender, keeping
-// the most recent reception for each (used as the basis for both the
-// alphabetical list and the recency/RSSI-ranked pinned section).
+// the most recent reception for each, then merges rows that are prefix-
+// compatible variants of the same physical node (#267). Used as the basis
+// for both the alphabetical list and the recency/RSSI-ranked pinned section.
 function dedupeSenders(records, ignore) {
   const ig = ignore || new Set()
   const bySender = new Map()
@@ -17,7 +74,7 @@ function dedupeSenders(records, ignore) {
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }
-  return [...bySender.values()]
+  return mergePrefixGroups([...bySender.entries()])
 }
 
 // senderList sorts deduped senders by name so the target dropdown stays
