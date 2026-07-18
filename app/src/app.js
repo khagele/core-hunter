@@ -552,8 +552,10 @@ function autoPingTick() {
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
   sendDiscover()
   pulseDiscoverBtn()
+  // Each staggered trace-ping is also a real transmission — pulse the FAB for
+  // it too, not just the broadcast (#254).
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
-    setTimeout(() => sendTracePing(id), delayMs)
+    setTimeout(() => { sendTracePing(id); pulseDiscoverBtn() }, delayMs)
   }
 }
 

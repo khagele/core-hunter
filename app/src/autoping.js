@@ -18,9 +18,12 @@ export function shouldAutoFire({ lastFireAt, lastLat, lastLon, now, lat, lon, in
 }
 
 // Target repeater trace-pings can't all fire in the same tick — space them
-// out so the radio sends one at a time.
+// out so the radio sends one at a time. The companion radio is half-duplex
+// (one transmission at a time), and autoPingTick's discover broadcast fires
+// synchronously right before these — so the FIRST trace-ping must not also
+// land at delayMs 0, or it collides with the broadcast (#253).
 export const STAGGER_MS = 1500
 
 export function staggerTargets(ids) {
-  return (ids || []).map((id, i) => ({ id, delayMs: i * STAGGER_MS }))
+  return (ids || []).map((id, i) => ({ id, delayMs: (i + 1) * STAGGER_MS }))
 }

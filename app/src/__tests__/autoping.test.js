@@ -35,11 +35,14 @@ describe('shouldAutoFire', () => {
 })
 
 describe('staggerTargets', () => {
-  it('spaces target ids STAGGER_MS apart, preserving order, first at 0', () => {
+  // First target starts at STAGGER_MS, not 0 (#253): autoPingTick's discover
+  // broadcast fires synchronously right before these on a half-duplex radio,
+  // so delayMs 0 would collide with it.
+  it('spaces target ids STAGGER_MS apart, preserving order, first after one stagger slot', () => {
     expect(staggerTargets(['aa', 'bb', 'cc'])).toEqual([
-      { id: 'aa', delayMs: 0 },
-      { id: 'bb', delayMs: STAGGER_MS },
-      { id: 'cc', delayMs: STAGGER_MS * 2 },
+      { id: 'aa', delayMs: STAGGER_MS },
+      { id: 'bb', delayMs: STAGGER_MS * 2 },
+      { id: 'cc', delayMs: STAGGER_MS * 3 },
     ])
   })
   it('returns an empty array for no targets', () => {
