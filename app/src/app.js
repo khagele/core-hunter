@@ -6,16 +6,20 @@
 //   parseFrame → code check → decodePacket → classifyReception
 //   → GPS fix (drop if none) → buildRecord → queue.add → updateHud
 //
-// Render tick (1s): non-destructive queue.takeAll() → makeFilter → map.render
-// Drain tick (5s):  non-destructive queue.takeAll() → publish unpublished rows
-//                   → add id to state.published Set (no queue.remove ever)
+// Render tick (1s): bounded queue reads → makeFilter → map.render
+// Drain tick (5s):  queue.unpublishedFrom(watermark) → publish → advance the
+//                   durable watermark → prune published rows past retention
+//
+// Both ticks read a bounded slice of the store, never the whole thing (#230):
+// the map gets its display window via the rx_at index, the log/target list get
+// the newest RECENT_CAP rows, and the drain gets only what it still owes.
 
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue } from './queue.js'
+import { Queue, RETENTION_MS } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -86,11 +90,9 @@ const state = {
   targetList: null,
   connected: false,
   wakeLock: null,
-  // Drain dedup: in-memory Set of row ids already published this session.
-  // Rows are NEVER deleted from IndexedDB — the local store is the hunter's
-  // working set; re-publish dedup is the backend's concern (via raw+rx_at).
-  // On app restart the Set is empty, so rows are republished; that is fine.
-  published: new Set(),
+  // Drain dedup is a watermark persisted in IndexedDB (queue.getWatermark),
+  // not an in-memory Set — an in-memory one was empty on every boot, so a
+  // restart re-published the entire store one await at a time (#230).
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
@@ -386,10 +388,15 @@ async function processFrame(dv) {
 }
 
 // ---------------------------------------------------------------------------
-// Render tick — reads ALL rows non-destructively (~every 1 s)
+// Render tick — bounded, non-destructive reads (~every 1 s)
 // ---------------------------------------------------------------------------
-// queue.takeAll() uses a readonly IDB transaction (getAll) — it does NOT
-// delete rows. It is safe to call it from the render path.
+// Both queue reads use readonly IDB transactions and delete nothing, so they
+// are safe on the render path. Neither is O(store): since() is scoped to the
+// display window by the rx_at index, recent() to RECENT_CAP rows (#230).
+
+// Row cap for the reads that are not window-scoped (receptions log "all" mode,
+// target list). Well above what either surface displays.
+const RECENT_CAP = 2000
 
 // enrichNames fills sender_label from the CoreScope resolver for senders whose
 // full pubkey is known but have no name yet. Cache hits are applied in-place;
@@ -411,13 +418,21 @@ function enrichNames(rows) {
 async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
-    const rows = await state.queue.takeAll()
-    state.lastRows = rows
     const now = Date.now()
+    // The map shows the chosen window, so read exactly that (#230). A null
+    // windowMs means "no time filter", which retention now bounds at 7 days.
+    const windowMs = state.filter.windowMs ?? RETENTION_MS
+    const windowRows = await state.queue.since(new Date(now - windowMs).toISOString())
+    // The receptions log's "all" mode and the target list are not window-
+    // scoped. They get a row-bounded read instead of the whole store: the log
+    // caps at 200 rows and the list shows far fewer senders than RECENT_CAP
+    // covers, so this is indistinguishable in practice at any realistic size.
+    const rows = await state.queue.recent(RECENT_CAP)
+    state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
-    enrichNames(rows)
+    enrichNames(windowRows)
     const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-    const filteredRows = rows.filter((r) => fn(r, now))
+    const filteredRows = windowRows.filter((r) => fn(r, now))
     const selected = selectedSet()
     if (state.map) {
       state.map.render(filteredRows, selected)
@@ -440,9 +455,12 @@ async function renderTick() {
 // ---------------------------------------------------------------------------
 // Drain tick — publish pending rows to MQTT (~every 5 s)
 // ---------------------------------------------------------------------------
-// Dedup via state.published (in-memory Set of row ids).
-// Rows are NEVER removed from IndexedDB. If publish fails, the row stays
-// unpublished and will be retried on the next drain.
+// Dedup via a watermark persisted in IndexedDB: every row at or below it has
+// reached the broker. It survives a restart, so a relaunch no longer
+// re-publishes the whole store. If publish fails the watermark stops there and
+// the remaining rows are retried on the next drain.
+// Rows are removed from IndexedDB only by retention (pruneOnce), and only once
+// they are at or below the watermark — see docs/2026-07-22-retention-decision.md.
 
 // The actual publish pass, split out from drainLoop's timer-rescheduling so it
 // can also be called on demand (e.g. right after returning from background)
@@ -457,24 +475,43 @@ async function drainOnce() {
   if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
   draining = true
   try {
-    const rows = await state.queue.takeAll()
-    let n = 0
+    const watermark = await state.queue.getWatermark()
+    const rows = await state.queue.unpublishedFrom(watermark)
+    let last = watermark
     for (const r of rows) {
-      if (state.published.has(r.id)) continue
       try {
         await state.publisher.publish(state.rxPubkey, r, state.name)
-        state.published.add(r.id)
-        n++
+        last = r.id
       } catch (_) {
-        // publish failed — leave for next drain
+        // Publish failed. Stop here rather than skipping ahead: the watermark
+        // means "everything at or below this id has reached the broker", so it
+        // can only advance over an unbroken run. The rest is retried next cycle.
+        break
       }
     }
-    if (n > 0) console.debug('[drain] published', n, 'record(s)')
+    if (last > watermark) {
+      await state.queue.setWatermark(last)
+      console.debug('[drain] published through id', last)
+    }
+    await pruneOnce()
   } catch (_) {
     // queue read failed — retry next cycle
   } finally {
     draining = false
   }
+}
+
+// Retention (#230): drop receptions past RETENTION_MS, but only ones the broker
+// already has — "all receptions go to MQTT" outranks the age cap, so an offline
+// phone keeps everything until it drains. Hourly; the store only grows slowly.
+let lastPrune = 0
+async function pruneOnce() {
+  const now = Date.now()
+  if (now - lastPrune < 3600_000) return
+  lastPrune = now
+  const cutoff = new Date(now - RETENTION_MS).toISOString()
+  const removed = await state.queue.prune(cutoff, await state.queue.getWatermark())
+  if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
 }
 
 async function drainLoop() {
