@@ -264,8 +264,8 @@ export function createHuntMap(containerId) {
     if (!map.getSource('points')) return   // style not ready yet
     const records = lastRecords, nowMs = Date.now()
     map.getSource('hex').setData(mode !== 'points' ? buildHexFC(records) : EMPTY)
-    map.getSource('points').setData(mode !== 'hex' ? buildPointsFC(records, nowMs) : EMPTY)
-    map.getSource('points-3d').setData(mode !== 'hex' ? buildPoints3DFC(records) : EMPTY)
+    if (!mode3D) map.getSource('points').setData(mode !== 'hex' ? buildPointsFC(records, nowMs) : EMPTY)
+    if (mode3D) map.getSource('points-3d').setData(mode !== 'hex' ? buildPoints3DFC(records) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
