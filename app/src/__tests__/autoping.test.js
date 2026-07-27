@@ -35,9 +35,12 @@ describe('shouldAutoFire', () => {
 })
 
 describe('staggerTargets', () => {
-  // First target starts at STAGGER_MS, not 0 (#253): autoPingTick's discover
-  // broadcast fires synchronously right before these on a half-duplex radio,
-  // so delayMs 0 would collide with it.
+  // First target starts at STAGGER_MS, not 0 (#253). NOT because it would
+  // collide with the discover broadcast — the firmware makes that unreachable:
+  // Dispatcher holds a single in-flight outbound, and CMD_SEND_CONTROL_DATA
+  // goes out at priority 0 against the trace's 5, so discover wins the queue
+  // even at delayMs 0. The offset is so the companion's send queue drains one
+  // packet per slot and the discover result is back before the first trace.
   it('spaces target ids STAGGER_MS apart, preserving order, first after one stagger slot', () => {
     expect(staggerTargets(['aa', 'bb', 'cc'])).toEqual([
       { id: 'aa', delayMs: STAGGER_MS },
