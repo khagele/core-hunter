@@ -39,6 +39,18 @@ export function nextCompassState({ follow, source }) {
   return { follow: true, source: null }
 }
 
+// Tap order for the FAB's progress ring (#259). Lives here, next to the
+// function that produces the transitions, so the two cannot drift: the ring
+// reads a position out of this list, and a list that disagrees with
+// nextCompassState misreports every tap.
+//
+// 'static' is deliberately absent. Every branch of nextCompassState returns
+// follow: true, so no tap can produce it — it is reached only by panning or
+// two-finger-rotating the map. indexOf therefore returns -1 for it, which
+// ringSegments renders as a complete all-muted ring: in the cycle's terms,
+// "nowhere". That -1 is a contract between the two, not an accident.
+export const COMPASS_CYCLE = ['following', 'heading', 'driving']
+
 // compassGlyph names the icon for a compass state: 'static' (not following),
 // 'following' (centred, north up), 'heading' (rotates with the device), or
 // 'driving' (rotates with GPS course-over-ground). The FAB previews the NEXT

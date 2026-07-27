@@ -134,7 +134,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Segmented progress ring (#259) — an absolutely-positioned overlay so it sits
    behind the flex-centered icon without disturbing that layout; fabring.js
    generates the segment circles per FAB (layer-toggle: 3 states, recenter-btn:
-   4 states). Plain on/off toggles (mode3d-toggle, discover-btn) get none. */
+   3 tap states -- 'static' is outside the cycle and renders all-muted, see
+   rotation.js). Plain on/off toggles (mode3d-toggle, discover-btn) get none. */
 .fab-ring { position: absolute; inset: 0; pointer-events: none; }
 .fab-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 

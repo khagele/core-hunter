@@ -35,7 +35,7 @@ import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading, COMPASS_CYCLE } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
@@ -1311,10 +1311,6 @@ const COMPASS_LABELS = {
   static: 'Resume following (compass mode)',
 }
 
-// Cycle order for the progress ring (#259) — tap destinations only. Static is
-// unreachable via tap (only via map pan/rotate), so it's not in this cycle.
-// nextCompassState cycles: following → heading → driving → following.
-const COMPASS_CYCLE = ['following', 'heading', 'driving']
 
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {

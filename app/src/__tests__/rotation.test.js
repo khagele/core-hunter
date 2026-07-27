@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading, COURSE_MIN_SPEED_MS } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading, COURSE_MIN_SPEED_MS, COMPASS_CYCLE } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -107,5 +107,46 @@ describe('resolveCourseHeading', () => {
     expect(resolveCourseHeading(90, 45, null)).toBe(90)
     expect(resolveCourseHeading(90, 45, NaN)).toBe(90)
     expect(resolveCourseHeading(90, 45, undefined)).toBe(90)
+  })
+})
+
+// #259/#265: the FAB's progress ring indexes into COMPASS_CYCLE, so the cycle
+// list and nextCompassState's actual advance have to stay in step. They drifted
+// once already — the list carried a 'static' entry that no tap can produce, so
+// a 4-segment ring described a 3-long cycle and every reading was off by one.
+// Keeping the list next to nextCompassState makes that testable; while it lived
+// in app.js (which exports nothing) reverting the fix left the suite green.
+describe('COMPASS_CYCLE matches what a tap actually does (#259)', () => {
+  it('holds exactly the states a tap can produce, in tap order', () => {
+    expect(COMPASS_CYCLE).toEqual(['following', 'heading', 'driving'])
+  })
+
+  it('advances by exactly one position per tap, wrapping at the end', () => {
+    let state = { follow: true, source: null }
+    let idx = COMPASS_CYCLE.indexOf(compassGlyph(state))
+    expect(idx).toBe(0)
+    for (let tap = 1; tap <= COMPASS_CYCLE.length; tap++) {
+      state = nextCompassState(state)
+      const next = COMPASS_CYCLE.indexOf(compassGlyph(state))
+      expect(next).toBe(tap % COMPASS_CYCLE.length)
+      idx = next
+    }
+    // A full lap returns to where it started.
+    expect(idx).toBe(0)
+  })
+
+  it('never produces a glyph that is missing from the cycle', () => {
+    let state = { follow: true, source: null }
+    for (let i = 0; i < 6; i++) {
+      state = nextCompassState(state)
+      expect(COMPASS_CYCLE).toContain(compassGlyph(state))
+    }
+  })
+
+  it('leaves static outside the cycle — it is reachable only by panning', () => {
+    expect(COMPASS_CYCLE).not.toContain('static')
+    expect(compassGlyph({ follow: false, source: null })).toBe('static')
+    // -1 is the contract the ring relies on for the all-muted rendering.
+    expect(COMPASS_CYCLE.indexOf('static')).toBe(-1)
   })
 })

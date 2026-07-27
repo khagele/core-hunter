@@ -12,6 +12,15 @@ const GAP = 4 // px gap between segments, in SVG user units
 // Pure geometry: one entry per segment, in draw order. `filled` = segments
 // from 0 through `current` (inclusive) — a genuine progress fill, not just a
 // single active-segment marker.
+//
+// A `current` of -1 is meaningful, not a bug to defend against: it is what
+// Array.indexOf returns for a state outside the cycle, and callers pass it
+// straight through (app.js does, for the compass FAB's 'static' — reachable by
+// panning the map, never by tapping). `i <= -1` is false for every segment, so
+// the ring renders complete and entirely muted, which reads as "not currently
+// anywhere in this cycle". Do NOT clamp with Math.max(current, 0) or early-
+// return []: the first would show 1-of-N for a state no tap can reach, the
+// second would drop the ring entirely. Pinned in fabring.test.js.
 export function ringSegments(current, total) {
   if (total < 2) return []
   const segLen = (CIRCUMFERENCE - total * GAP) / total

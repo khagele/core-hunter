@@ -48,3 +48,31 @@ describe('fabRingSvg', () => {
     expect(fabRingSvg(0, 1)).toBe('')
   })
 })
+
+// #259/#265: a state outside the cycle renders as a complete, all-muted ring.
+// This is how the compass FAB shows 'static' — reached by panning the map, not
+// by tapping — and app.js gets there by passing indexOf's -1 straight through.
+// It is load-bearing product behaviour that falls out of `i <= current` rather
+// than being stated anywhere, so a defensive clamp (Math.max(current, 0)) or an
+// early `if (current < 0) return []` would silently regress it to 1/3, or to no
+// ring at all, with nothing failing.
+describe('ringSegments for a position outside the cycle (#265)', () => {
+  it('renders every segment, all unfilled, for current = -1', () => {
+    const segs = ringSegments(-1, 3)
+    expect(segs).toHaveLength(3)
+    expect(segs.every((s) => s.filled === false)).toBe(true)
+  })
+
+  it('keeps the geometry intact, so the ring reads as a ring and not a gap', () => {
+    const muted = ringSegments(-1, 3)
+    const normal = ringSegments(0, 3)
+    expect(muted.map((s) => s.dasharray)).toEqual(normal.map((s) => s.dasharray))
+    expect(muted.map((s) => s.dashoffset)).toEqual(normal.map((s) => s.dashoffset))
+  })
+
+  it('emits markup rather than an empty string, so the FAB keeps its ring', () => {
+    const svg = fabRingSvg(-1, 3)
+    expect(svg).toContain('<circle')
+    expect(svg).not.toContain('var(--ch-accent)')
+  })
+})
