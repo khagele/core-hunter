@@ -123,7 +123,11 @@ const state = {
   // when exactly one target is selected (#178).
   senderLabels: new Map(),
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
-  hasFix: false,
+  // PROTOTYPE (#293): `?terrain=` also clears it. Geolocation is blocked on an
+  // insecure origin, so over a LAN dev server (http://<ip>:5173) no fix ever
+  // arrives and the undismissable pre-connect splash would cover the map — the
+  // one thing the terrain spike needs to look at. Throwaway, flag-gated.
+  hasFix: new URLSearchParams(location.search).has('terrain'),
   bleError: false,
   gpsError: false,
   // Onboarding re-opened via the "?" button after the splash has been dismissed.
