@@ -43,8 +43,16 @@ function startProtoHud(map, variant) {
       if (/arcgisonline|elevation-tiles-prod|mapterhorn/.test(e.name)) { terrainKb += kb; terrainN++ }
       else if (/openfreemap/.test(e.name)) { baseKb += kb; baseN++ }
     }
+    // Report the DEM source's LIVE maxzoom, not the requested one: MapLibre
+    // only applies source options once the source loads, so this is the proof
+    // the cap actually took effect. Cross-check it against the terrain tile
+    // count below — a working z10 cap should show ~1-2 tiles for a screen that
+    // would need ~24 uncapped.
+    const demSrc = map.getSource('proto-dem')
+    const dz = window.__protoDemZoom
     box.textContent =
-      `#293 terrain=${variant}\n` +
+      `#293 terrain=${variant}${dz ? ` demzoom=${dz}→${demSrc ? demSrc.maxzoom : '?'}` : ''}` +
+      `${map.getTerrain && map.getTerrain() ? ' MESH' : ''}\n` +
       `fps ${fps}  worst frame ${Math.round(worst)}ms\n` +
       `settled ${settledAt === null ? 'NEVER' : settledAt + 'ms'}  lost after ${lostAfterSettle}\n` +
       `terrain ${terrainN} tiles ${Math.round(terrainKb)}kb\n` +
@@ -249,14 +257,33 @@ export function createHuntMap(containerId) {
       }
       map.addLayer({ id: 'proto-terrain', type: 'raster', source: 'proto-hillshade',
         paint: { 'raster-opacity': 0.45 } }, beforeId)
-    } else if (terrainProto === 'dem') {
+    } else if (terrainProto === 'dem' || terrainProto === 'lowpoly') {
+      // `demzoom` caps the DEM source's maxzoom. This is the "low poly" knob:
+      // terrain mesh density follows tile resolution, so a cap means both a
+      // coarser mesh AND far fewer requests — MapLibre overzooms one parent
+      // tile instead of fetching the children (a z9 tile covers 32x the ground
+      // of a z14 one). For RF work the useful signal is the big landform that
+      // blocks a path, not metre-scale detail, so coarse is arguably correct
+      // rather than a compromise. Default 10 for lowpoly, 15 for the full-fat
+      // `dem` comparison.
+      const demZoom = Number(new URLSearchParams(location.search).get('demzoom'))
+        || (terrainProto === 'lowpoly' ? 10 : 15)
       if (!map.getSource('proto-dem')) {
-        map.addSource('proto-dem', { type: 'raster-dem', tileSize: 256, maxzoom: 15, encoding: 'terrarium',
+        map.addSource('proto-dem', { type: 'raster-dem', tileSize: 256, maxzoom: demZoom, encoding: 'terrarium',
           tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
           attribution: 'DEM: Mapzen/AWS' })
       }
       map.addLayer({ id: 'proto-terrain', type: 'hillshade', source: 'proto-dem',
         paint: { 'hillshade-exaggeration': 0.5 } }, beforeId)
+      // lowpoly additionally enables real mesh displacement — the thing v1 did
+      // and that froze it. The bet under test: with the DEM capped this coarse,
+      // the mesh is cheap enough to survive. NB setTerrain makes
+      // easeTo({pitch}) a no-op, so the 3D FAB's tilt animation won't work
+      // while this variant is on (documented in the v1 post-mortem).
+      if (terrainProto === 'lowpoly') {
+        map.setTerrain({ source: 'proto-dem', exaggeration: 1.4 })
+      }
+      window.__protoDemZoom = demZoom
     }
   }
 
