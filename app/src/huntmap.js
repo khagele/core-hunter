@@ -8,6 +8,51 @@ import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
 import { squareRing, pillarHalfWidthM } from './pointmarker.js'
 
+// PROTOTYPE (#293) — on-screen diagnostics for the terrain spike, so a phone
+// test yields numbers instead of impressions (no devtools on the hunting
+// device). Reports live FPS, whether the map ever settles (map.loaded(), the
+// exact symptom that killed the v1 terrain attempt), and cumulative tile bytes
+// per host so the terrain source's cost can be read against the basemap's.
+// Flag-gated and throwaway — deleted with the rest of the spike.
+function startProtoHud(map, variant) {
+  const box = document.createElement('div')
+  box.style.cssText = 'position:fixed;left:8px;top:56px;z-index:9999;background:rgba(0,0,0,.82);' +
+    'color:#0f0;font:11px/1.45 ui-monospace,monospace;padding:7px 9px;border-radius:6px;' +
+    'pointer-events:none;white-space:pre;max-width:70vw'
+  document.body.appendChild(box)
+  let frames = 0, fps = 0, worst = 0, settledAt = null, lostAfterSettle = 0
+  const t0 = performance.now()
+  let last = performance.now()
+  const tick = () => {
+    const now = performance.now()
+    const dt = now - last
+    last = now
+    if (dt > worst) worst = dt
+    frames++
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+  setInterval(() => {
+    fps = frames; frames = 0
+    const loaded = map.loaded()
+    if (loaded && settledAt === null) settledAt = Math.round(performance.now() - t0)
+    if (!loaded && settledAt !== null) lostAfterSettle++
+    let terrainKb = 0, terrainN = 0, baseKb = 0, baseN = 0
+    for (const e of performance.getEntriesByType('resource')) {
+      const kb = (e.transferSize || 0) / 1024
+      if (/arcgisonline|elevation-tiles-prod|mapterhorn/.test(e.name)) { terrainKb += kb; terrainN++ }
+      else if (/openfreemap/.test(e.name)) { baseKb += kb; baseN++ }
+    }
+    box.textContent =
+      `#293 terrain=${variant}\n` +
+      `fps ${fps}  worst frame ${Math.round(worst)}ms\n` +
+      `settled ${settledAt === null ? 'NEVER' : settledAt + 'ms'}  lost after ${lostAfterSettle}\n` +
+      `terrain ${terrainN} tiles ${Math.round(terrainKb)}kb\n` +
+      `basemap ${baseN} tiles ${Math.round(baseKb)}kb`
+    worst = 0
+  }, 1000)
+}
+
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
 // a vector basemap (OpenFreeMap) unlocks 3D buildings in the follow-up
@@ -166,6 +211,38 @@ export function createHuntMap(containerId) {
       if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
     }, 12000)
   }
+  // PROTOTYPE (#293) — throwaway, flag-gated, not shipped. `?terrain=hillshade`
+  // adds a pre-rendered shaded-relief RASTER overlay; `?terrain=dem` adds a
+  // MapLibre hillshade layer computed from terrarium DEM tiles. Neither calls
+  // setTerrain(), which is what froze the map in the v1 attempt
+  // (docs/2026-07-11-3d-mode.md) — no mesh displacement, so no load loop and no
+  // easeTo({pitch}) no-op. Here to measure the two against each other.
+  const terrainProto = new URLSearchParams(location.search).get('terrain')
+  if (terrainProto) { window.__protoMap = map; startProtoHud(map, terrainProto) }
+  function addTerrainPrototype() {
+    if (!terrainProto || map.getLayer('proto-terrain')) return
+    // Sits directly above the basemap and below every signal overlay, so it can
+    // never occlude receptions.
+    const beforeId = map.getLayer('trail') ? 'trail' : undefined
+    if (terrainProto === 'hillshade') {
+      if (!map.getSource('proto-hillshade')) {
+        map.addSource('proto-hillshade', { type: 'raster', tileSize: 256, maxzoom: 16,
+          tiles: ['https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}'],
+          attribution: 'Hillshade: Esri, USGS' })
+      }
+      map.addLayer({ id: 'proto-terrain', type: 'raster', source: 'proto-hillshade',
+        paint: { 'raster-opacity': 0.45 } }, beforeId)
+    } else if (terrainProto === 'dem') {
+      if (!map.getSource('proto-dem')) {
+        map.addSource('proto-dem', { type: 'raster-dem', tileSize: 256, maxzoom: 15, encoding: 'terrarium',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          attribution: 'DEM: Mapzen/AWS' })
+      }
+      map.addLayer({ id: 'proto-terrain', type: 'hillshade', source: 'proto-dem',
+        paint: { 'hillshade-exaggeration': 0.5 } }, beforeId)
+    }
+  }
+
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
     for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
@@ -240,6 +317,7 @@ export function createHuntMap(containerId) {
       filter: ['==', ['get', 'style'], 'drift'],
       layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    addTerrainPrototype()  // PROTOTYPE (#293) — no-op unless ?terrain= is set
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
