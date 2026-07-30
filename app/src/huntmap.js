@@ -50,9 +50,12 @@ function startProtoHud(map, variant) {
     // would need ~24 uncapped.
     const demSrc = map.getSource('proto-dem')
     const dz = window.__protoDemZoom
+    const terr = map.getTerrain && map.getTerrain()
+    const pov = window.__protoPov
     box.textContent =
       `#293 terrain=${variant}${dz ? ` demzoom=${dz}→${demSrc ? demSrc.maxzoom : '?'}` : ''}` +
-      `${map.getTerrain && map.getTerrain() ? ' MESH' : ''}\n` +
+      `${terr ? ` MESH x${terr.exaggeration}` : ''}\n` +
+      `${pov ? `POV eye ${pov.eyeM}m on ground ${pov.groundM}m\n` : ''}` +
       `fps ${fps}  worst frame ${Math.round(worst)}ms\n` +
       `settled ${settledAt === null ? 'NEVER' : settledAt + 'ms'}  lost after ${lostAfterSettle}\n` +
       `terrain ${terrainN} tiles ${Math.round(terrainKb)}kb\n` +
@@ -292,17 +295,82 @@ export function createHuntMap(containerId) {
           tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
           attribution: 'DEM: Mapzen/AWS' })
       }
+      // `?exag=` scales the relief. Belgian/Dutch terrain is genuinely shallow
+      // — a few hundred metres across many kilometres — so at 1:1 it barely
+      // reads on screen even where the hills are real. Exaggeration is a
+      // display choice, not a data one, but note it does misrepresent slope:
+      // useful for *seeing* which way the ground rises, misleading if read as
+      // literal gradient. Shading is scaled alongside the mesh so the two agree.
+      const exag = Number(new URLSearchParams(location.search).get('exag'))
+      const terrainExag = exag > 0 ? exag : 3
       map.addLayer({ id: 'proto-terrain', type: 'hillshade', source: 'proto-dem',
-        paint: { 'hillshade-exaggeration': 0.5 } }, beforeId)
+        paint: { 'hillshade-exaggeration': Math.min(1, 0.35 * terrainExag) } }, beforeId)
       // lowpoly additionally enables real mesh displacement — the thing v1 did
       // and that froze it. The bet under test: with the DEM capped this coarse,
       // the mesh is cheap enough to survive. NB setTerrain makes
       // easeTo({pitch}) a no-op, so the 3D FAB's tilt animation won't work
       // while this variant is on (documented in the v1 post-mortem).
       if (terrainProto === 'lowpoly') {
-        map.setTerrain({ source: 'proto-dem', exaggeration: 1.4 })
+        map.setTerrain({ source: 'proto-dem', exaggeration: terrainExag })
+      }
+      // Live knob, so the value can be dialled in from the console without a
+      // reload: __setExag(6).
+      window.__setExag = (v) => {
+        map.setTerrain({ source: 'proto-dem', exaggeration: v })
+        map.setPaintProperty('proto-terrain', 'hillshade-exaggeration', Math.min(1, 0.35 * v))
+        return v
       }
       window.__protoDemZoom = demZoom
+      window.__protoExag = terrainExag
+
+      // `?pov=<metres>` — stand the camera ON the terrain at eye height instead
+      // of approximating with zoom+pitch. This is the view that actually answers
+      // the RF question: from where I am standing, does a ridge sit between me
+      // and the node? A tilted bird's-eye cannot answer that, because it never
+      // puts the eye below the ridgeline.
+      //
+      // Requires the free camera: zoom/pitch cannot express "1.5 m above the
+      // ground" — altitude there is a function of zoom, and the terrain height
+      // under the camera is only known once the DEM has loaded. Note the
+      // elevation returned is the EXAGGERATED one (setTerrain scales it), so at
+      // exag 3 a 1.5 m eye height sits on 3x-tall hills — internally consistent
+      // for line-of-sight *within* the exaggerated world, but not real geometry.
+      // MapLibre has no free-camera API (it forked from Mapbox GL JS 1.13,
+      // before that landed), so the camera cannot be placed by position +
+      // altitude directly. calculateCameraOptionsFromTo is the supported
+      // equivalent: give it a from-point with altitude and a to-point, and it
+      // returns the center/zoom/pitch/bearing that puts the eye there.
+      const povM = Number(new URLSearchParams(location.search).get('pov'))
+      const povLookM = Number(new URLSearchParams(location.search).get('look')) || 3000
+      if (povM > 0 && terrainProto === 'lowpoly') {
+        const applyPov = () => {
+          const from = map.getCenter()
+          const ground = map.queryTerrainElevation(from)
+          // Before the DEM lands this reads a flat 0, which would place the eye
+          // 1.5 m above sea level and bury it inside the hills once the real
+          // terrain arrives. Wait for a non-zero reading rather than a non-null.
+          if (!ground) return false
+          // Aim at a point `look` metres ahead along the current bearing. Its
+          // own ground height matters: targeting sea level would tip the camera
+          // downward into the hillside instead of along it.
+          const bearing = map.getBearing()
+          const rad = (bearing * Math.PI) / 180
+          const dLat = (povLookM * Math.cos(rad)) / 111320
+          const dLon = (povLookM * Math.sin(rad)) / (111320 * Math.cos((from.lat * Math.PI) / 180))
+          const to = { lng: from.lng + dLon, lat: from.lat + dLat }
+          const toGround = map.queryTerrainElevation(to) || ground
+          const opts = map.calculateCameraOptionsFromTo(from, ground + povM, to, toGround)
+          map.jumpTo(opts)
+          window.__protoPov = { eyeM: povM, groundM: Math.round(ground),
+            lookM: povLookM, pitch: Math.round(map.getPitch()) }
+          return true
+        }
+        window.__applyPov = applyPov
+        let tries = 0
+        const povTimer = setInterval(() => {
+          if (applyPov() || ++tries > 60) clearInterval(povTimer)
+        }, 250)
+      }
     }
   }
 
@@ -333,7 +401,13 @@ export function createHuntMap(containerId) {
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
     if (map.getSource('openmaptiles') && !map.getLayer('buildings-3d')) {
-      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+      // minzoom 13, not 14: OpenFreeMap's TileJSON declares the `building`
+      // vector layer as minzoom 13, so 14 was one level stricter than the data
+      // required and buildings vanished a zoom earlier than they had to. 13 is
+      // the floor — there is genuinely no building geometry below it, so going
+      // lower would only add empty queries. Matters most at high pitch, where
+      // the far half of the view sits below the current zoom.
+      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 13,
         layout: { visibility: mode3D ? 'visible' : 'none' },
         paint: { 'fill-extrusion-color': cssVar('--ch-building'),
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
