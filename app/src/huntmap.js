@@ -55,13 +55,131 @@ function startProtoHud(map, variant) {
     box.textContent =
       `#293 terrain=${variant}${dz ? ` demzoom=${dz}→${demSrc ? demSrc.maxzoom : '?'}` : ''}` +
       `${terr ? ` MESH x${terr.exaggeration}` : ''}\n` +
-      `${pov ? `POV eye ${pov.eyeM}m on ground ${pov.groundM}m\n` : ''}` +
+      `${pov ? `POV eye ${pov.achievedEyeM}m${pov.capped ? ` (asked ${pov.askedM}m — PITCH CAPPED)` : ''}` +
+        ` ground ${pov.groundM}m look ${pov.lookM}m\n` : ''}` +
+      `${window.__protoSkyHour != null ? `sky ${window.__protoSkyHour}h\n` : ''}` +
       `fps ${fps}  worst frame ${Math.round(worst)}ms\n` +
       `settled ${settledAt === null ? 'NEVER' : settledAt + 'ms'}  lost after ${lostAfterSettle}\n` +
       `terrain ${terrainN} tiles ${Math.round(terrainKb)}kb\n` +
       `basemap ${baseN} tiles ${Math.round(baseKb)}kb`
     worst = 0
   }, 1000)
+}
+
+// PROTOTYPE (#293) — synthetic hunter data for looking at terrain with the
+// signal layers on top, since an unconnected app draws an empty map and the
+// whole question is how relief reads *underneath* receptions. Deterministic
+// (seeded, no Math.random) so the same URL always yields the same picture and
+// two screenshots can be compared. Flag-gated; deleted with the spike.
+function buildMockData(centerLat, centerLon) {
+  let seed = 1337
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 }
+  const hex = (n) => { let s = ''; while (s.length < n) s += Math.floor(rnd() * 16).toString(16); return s }
+  const M_PER_DEG = 111320
+
+  // Three repeaters, a few km apart, each with a full 64-hex pubkey — the node
+  // layer only draws ids of kind advert_pubkey/discover_pubkey.
+  const nodes = [
+    { name: 'ARD-Noord', dLat: 0.030, dLon: 0.020 },
+    { name: 'ARD-Zuid', dLat: -0.025, dLon: 0.038 },
+    { name: 'ARD-West', dLat: 0.008, dLon: -0.045 },
+  ].map((n) => ({
+    pubkey: hex(64), name: n.name,
+    lat: centerLat + n.dLat, lon: centerLon + n.dLon,
+  }))
+
+  // A drive route that tours past each repeater rather than wandering at
+  // random. This is what makes the mock useful: a pure random walk almost never
+  // passes close to a node, so every sample lands in one weak tier and the
+  // colour ramp never appears. Touring gives hot at closest approach and cold
+  // between nodes — the gradient the map exists to show.
+  const waypoints = [
+    { lat: centerLat - 0.022, lon: centerLon - 0.034 },
+    { lat: nodes[2].lat + 0.002, lon: nodes[2].lon + 0.001 },   // ARD-West
+    { lat: nodes[0].lat - 0.001, lon: nodes[0].lon - 0.002 },   // ARD-Noord
+    { lat: nodes[1].lat + 0.001, lon: nodes[1].lon + 0.002 },   // ARD-Zuid
+    { lat: centerLat + 0.018, lon: centerLon + 0.030 },
+  ]
+  const records = []
+  const now = Date.now()
+  const perLeg = 65
+  let lat = waypoints[0].lat, lon = waypoints[0].lon
+  for (let i = 0; i < (waypoints.length - 1) * perLeg; i++) {
+    const leg = Math.floor(i / perLeg)
+    const t = (i % perLeg) / perLeg
+    const a = waypoints[leg], b = waypoints[leg + 1]
+    // Jitter keeps it from being a drawn straight line while still arriving.
+    lat = a.lat + (b.lat - a.lat) * t + (rnd() - 0.5) * 0.0016
+    lon = a.lon + (b.lon - a.lon) * t + (rnd() - 0.5) * 0.0022
+    // Each sample hears whichever repeater is nearest, at a strength that falls
+    // off with distance — a plausible log-distance path loss plus noise, so the
+    // heat map reads hot near a node and cold at the fringe instead of random.
+    let best = null, bestD = Infinity
+    for (const n of nodes) {
+      const dy = (n.lat - lat) * M_PER_DEG
+      const dx = (n.lon - lon) * M_PER_DEG * Math.cos((lat * Math.PI) / 180)
+      const d = Math.sqrt(dx * dx + dy * dy)
+      if (d < bestD) { bestD = d; best = n }
+    }
+    // Log-distance path loss with an exponent near 3, which is what mixed
+    // terrain actually gives — and, unlike a gentler curve, it spans the whole
+    // tier ramp: hot within ~200 m, warm by ~500 m, mid around 2 km, cold past
+    // ~5 km. A model that leaves every sample above -80 paints the entire track
+    // in one colour and demonstrates nothing.
+    const dM = Math.max(10, bestD)
+    const rssi = Math.max(-125, Math.min(-35, Math.round(-30 - 30 * Math.log10(dM / 10) + (rnd() - 0.5) * 7)))
+    records.push({
+      id: 'mock-' + i,
+      lat, lon, rssi,
+      snr: Math.round((10 - 12 * Math.log10(dM / 100) + (rnd() - 0.5) * 4) * 10) / 10,
+      rx_at: now - (260 - i) * 4000,        // ~17 min of driving, newest last
+      sender_id: best.pubkey, sender_kind: 'advert_pubkey', sender_label: best.name,
+      sender_role: 'Repeater', hops: 0, is_direct: true,
+    })
+  }
+  return { nodes, records }
+}
+
+// PROTOTYPE (#293/#333) — sky, driven by time of day. At high pitch a large
+// part of the viewport is above the horizon, and with no sky MapLibre draws
+// nothing there, which reads as a broken/empty map. Time-of-day rather than a
+// fixed colour because this app is used at dusk and after dark as often as in
+// daylight, and a bright blue sky at 23:00 would be worse than none.
+const SKY_STOPS = [
+  { h: 0, sky: '#05070f', horizon: '#0a1020', fog: '#0a1020' },   // night
+  { h: 5.5, sky: '#141d38', horizon: '#3b3350', fog: '#2a2740' },   // astronomical dawn
+  { h: 7, sky: '#3f6ea8', horizon: '#e8a06a', fog: '#c9a58a' },   // sunrise
+  { h: 10, sky: '#4a86c8', horizon: '#bcd6ea', fog: '#c5d8e8' },   // morning
+  { h: 14, sky: '#4287d0', horizon: '#c3daf0', fog: '#cbdcec' },   // day
+  { h: 18, sky: '#4a7fb5', horizon: '#e6b183', fog: '#d3b295' },   // golden hour
+  { h: 20, sky: '#2a3a63', horizon: '#c2704f', fog: '#7a5a5a' },   // sunset
+  { h: 21.5, sky: '#101a33', horizon: '#3a3352', fog: '#241f38' }, // dusk
+  { h: 24, sky: '#05070f', horizon: '#0a1020', fog: '#0a1020' },   // night again
+]
+const hexToRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
+const rgbToHex = (c) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')
+const mixHex = (a, b, t) => {
+  const [ar, ag, ab] = hexToRgb(a), [br, bg, bb] = hexToRgb(b)
+  return rgbToHex([ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t])
+}
+// skyForHour interpolates between stops so the transition is continuous rather
+// than snapping between four hardcoded looks.
+function skyForHour(hour) {
+  const h = ((hour % 24) + 24) % 24
+  let a = SKY_STOPS[0], b = SKY_STOPS[SKY_STOPS.length - 1]
+  for (let i = 0; i < SKY_STOPS.length - 1; i++) {
+    if (h >= SKY_STOPS[i].h && h <= SKY_STOPS[i + 1].h) { a = SKY_STOPS[i]; b = SKY_STOPS[i + 1]; break }
+  }
+  const span = b.h - a.h
+  const t = span > 0 ? (h - a.h) / span : 0
+  return {
+    'sky-color': mixHex(a.sky, b.sky, t),
+    'horizon-color': mixHex(a.horizon, b.horizon, t),
+    'fog-color': mixHex(a.fog, b.fog, t),
+    'sky-horizon-blend': 0.6,
+    'horizon-fog-blend': 0.5,
+    'fog-ground-blend': 0.1,
+  }
 }
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -132,6 +250,11 @@ export function createHuntMap(containerId) {
   const protoCenter = protoAt.length === 2 && protoAt.every(Number.isFinite)
     ? [protoAt[1], protoAt[0]]   // ?at= is lat,lon (map order is lon,lat)
     : [4, 51]
+  // `?mock=1` — built from the start centre so the synthetic track sits where
+  // the camera actually is, not in flat Belgium.
+  const mockData = protoParams.get('mock')
+    ? buildMockData(protoCenter[1], protoCenter[0])
+    : null
 
   let map
   try {
@@ -153,7 +276,9 @@ export function createHuntMap(containerId) {
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
-  let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
+  // Mock mode turns the repeater layer on up front — it is the layer being
+  // demonstrated, and leaving it off would just show an empty map (#293).
+  let nodePositions = mockData ? mockData.nodes : [], nodeLayerOn = !!mockData, nodeMarkers = []
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
@@ -266,6 +391,20 @@ export function createHuntMap(containerId) {
   // easeTo({pitch}) no-op. Here to measure the two against each other.
   const terrainProto = new URLSearchParams(location.search).get('terrain')
   if (terrainProto) { window.__protoMap = map; startProtoHud(map, terrainProto) }
+  // `?hour=` forces a time of day so dusk/night can be checked without waiting
+  // for the clock; otherwise it follows the device.
+  const skyHourParam = protoParams.get('hour')
+  function applyProtoSky() {
+    if (!terrainProto || typeof map.setSky !== 'function') return
+    const hour = skyHourParam !== null && skyHourParam !== ''
+      ? Number(skyHourParam)
+      : new Date().getHours() + new Date().getMinutes() / 60
+    if (!Number.isFinite(hour)) return
+    map.setSky(skyForHour(hour))
+    window.__protoSkyHour = Math.round(hour * 10) / 10
+  }
+  // Live knob for scrubbing through the day: __setHour(20.5)
+  window.__setHour = (h) => { map.setSky(skyForHour(h)); window.__protoSkyHour = h; return h }
   function addTerrainPrototype() {
     if (!terrainProto || map.getLayer('proto-terrain')) return
     // Sits directly above the basemap and below every signal overlay, so it can
@@ -361,8 +500,22 @@ export function createHuntMap(containerId) {
           const toGround = map.queryTerrainElevation(to) || ground
           const opts = map.calculateCameraOptionsFromTo(from, ground + povM, to, toGround)
           map.jumpTo(opts)
-          window.__protoPov = { eyeM: povM, groundM: Math.round(ground),
-            lookM: povLookM, pitch: Math.round(map.getPitch()) }
+          // The requested eye height is NOT necessarily what you get, and the
+          // gap is geometric rather than a bug: eye height, look distance and
+          // pitch are one relation, h = d / tan(pitch). MapLibre caps pitch at
+          // 85, i.e. tan = 11.4, so looking 3 km ahead forces an eye ~262 m up;
+          // a true 1.5 m eye could only look ~17 m ahead. Report what was
+          // actually achieved, since a view claiming "1.5 m" while sitting a
+          // quarter-kilometre up would quietly invalidate any line-of-sight
+          // read made from it.
+          const achievedPitch = map.getPitch()
+          const achievedEyeM = povLookM / Math.tan((achievedPitch * Math.PI) / 180)
+          window.__protoPov = {
+            askedM: povM, groundM: Math.round(ground), lookM: povLookM,
+            pitch: Math.round(achievedPitch),
+            achievedEyeM: Math.round(achievedEyeM),
+            capped: achievedEyeM > povM * 1.5,
+          }
           return true
         }
         window.__applyPov = applyPov
@@ -507,6 +660,7 @@ export function createHuntMap(containerId) {
       layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
     addTerrainPrototype()  // PROTOTYPE (#293) — no-op unless ?terrain= is set
+    applyProtoSky()        // sky must be re-applied after a style swap too
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
@@ -718,7 +872,15 @@ export function createHuntMap(containerId) {
   }
 
   // ---- public API (unchanged from the Leaflet version) ----
-  function render(records, selectedIds) { lastRecords = records || []; lastSelected = selectedIds || null; draw() }
+  // PROTOTYPE (#293): `?mock=1` substitutes synthetic receptions/nodes whenever
+  // the real feed is empty — an unconnected app renders nothing, and terrain is
+  // only worth judging with signal drawn over it. Real data always wins, so
+  // this cannot mask a live session.
+  function render(records, selectedIds) {
+    lastRecords = (mockData && !(records && records.length)) ? mockData.records : (records || [])
+    lastSelected = selectedIds || null
+    draw()
+  }
   function onLocate(cb) { onLocateCb = cb }
   function setLocateVisible(v) {
     locateVisible = !!v
@@ -760,7 +922,11 @@ export function createHuntMap(containerId) {
   function setLayerMode(m) { mode = m; applyLayerVisibility(); draw() }
   // Node-position layer (#197): the registry set is fetched once by app.js and
   // handed over whole; bounds filtering happens here per tick.
-  function setNodePositions(nodes) { nodePositions = Array.isArray(nodes) ? nodes : []; draw() }
+  function setNodePositions(nodes) {
+    const real = Array.isArray(nodes) ? nodes : []
+    nodePositions = (mockData && !real.length) ? mockData.nodes : real
+    draw()
+  }
   function setNodeLayerVisible(v) {
     nodeLayerOn = !!v
     for (const id of ['nodedrift', 'nodecircle-search', 'nodecircle-drift']) {
