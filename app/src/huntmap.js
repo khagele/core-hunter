@@ -340,9 +340,9 @@ export function createHuntMap(containerId) {
       // altitude directly. calculateCameraOptionsFromTo is the supported
       // equivalent: give it a from-point with altitude and a to-point, and it
       // returns the center/zoom/pitch/bearing that puts the eye there.
-      const povM = Number(new URLSearchParams(location.search).get('pov'))
+      const povM = Number(new URLSearchParams(location.search).get('pov')) || 1.5
       const povLookM = Number(new URLSearchParams(location.search).get('look')) || 3000
-      if (povM > 0 && terrainProto === 'lowpoly') {
+      if (terrainProto === 'lowpoly') {
         const applyPov = () => {
           const from = map.getCenter()
           const ground = map.queryTerrainElevation(from)
@@ -366,10 +366,59 @@ export function createHuntMap(containerId) {
           return true
         }
         window.__applyPov = applyPov
-        let tries = 0
-        const povTimer = setInterval(() => {
-          if (applyPov() || ++tries > 60) clearInterval(povTimer)
-        }, 250)
+
+        // One button that swaps state rather than an enter/exit pair: tap to
+        // drop to eye height, tap again to return to exactly the camera you
+        // left. Deliberately NOT in the right-hand FAB stack — that runs
+        // 112..382px and the code there records 408px as already off-screen in
+        // landscape on a car-mounted phone, so a 7th slot would be unreachable
+        // (the crowding #258 exists to fix). Bottom-left is free.
+        const fab = document.createElement('button')
+        fab.type = 'button'
+        fab.id = 'proto-pov-fab'
+        fab.setAttribute('aria-label', 'Eye-height view')
+        fab.textContent = '👁'
+        fab.style.cssText = 'position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom, 18px) + 112px);' +
+          'width:46px;height:46px;border-radius:50%;border:none;background:var(--ch-surface);' +
+          '-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--ch-text);' +
+          'font-size:20px;z-index:500;cursor:pointer;display:flex;align-items:center;' +
+          'justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.3)'
+        document.body.appendChild(fab)
+        let povOn = false, restoreCam = null
+        const ACCENT_RING = '0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent)'
+        fab.addEventListener('click', () => {
+          if (povOn) {
+            if (restoreCam) map.jumpTo(restoreCam)
+            povOn = false
+            window.__protoPov = null
+            fab.style.boxShadow = '0 4px 14px rgba(0,0,0,.3)'
+            fab.style.color = 'var(--ch-text)'
+            return
+          }
+          restoreCam = { center: map.getCenter(), zoom: map.getZoom(),
+            pitch: map.getPitch(), bearing: map.getBearing() }
+          if (!applyPov()) {
+            // No elevation yet — say so instead of silently doing nothing,
+            // since the camera not moving is indistinguishable from a dead button.
+            fab.style.color = 'var(--ch-accent-2)'
+            setTimeout(() => { if (!povOn) fab.style.color = 'var(--ch-text)' }, 1200)
+            return
+          }
+          povOn = true
+          fab.style.boxShadow = ACCENT_RING
+          fab.style.color = 'var(--ch-accent)'
+        })
+
+        // ?pov= still auto-enters, so the URL form keeps working.
+        if (new URLSearchParams(location.search).get('pov')) {
+          let tries = 0
+          const povTimer = setInterval(() => {
+            if (applyPov() || ++tries > 60) {
+              clearInterval(povTimer)
+              if (window.__protoPov) { povOn = true; fab.style.boxShadow = ACCENT_RING; fab.style.color = 'var(--ch-accent)' }
+            }
+          }, 250)
+        }
       }
     }
   }
