@@ -118,10 +118,23 @@ export function createHuntMap(containerId) {
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
   const styleFor = () => STYLES[cssVar('--ch-basemap') || 'dark'] || STYLES.dark
 
+  // PROTOTYPE (#293/#333): start already tilted, and optionally somewhere else.
+  // Needed because setTerrain makes easeTo({pitch}) a no-op, so with the mesh
+  // variant on, the FAB cannot tilt you — the camera has to start at the angle
+  // being evaluated. `?pitch=85&at=50.25,5.80` also saves hunting for hills by
+  // hand: the default centre is flat Belgium, where terrain shows nothing.
+  const protoParams = new URLSearchParams(location.search)
+  const protoPitch = Math.min(MAX_PITCH, Number(protoParams.get('pitch')) || 0)
+  const protoAt = (protoParams.get('at') || '').split(',').map(Number)
+  const protoCenter = protoAt.length === 2 && protoAt.every(Number.isFinite)
+    ? [protoAt[1], protoAt[0]]   // ?at= is lat,lon (map order is lon,lat)
+    : [4, 51]
+
   let map
   try {
     map = new maplibregl.Map({
-      container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
+      container: containerId, style: styleFor(), center: protoCenter, zoom: 14,
+      pitch: protoPitch,
       attributionControl: false, dragRotate: true, pitchWithRotate: false, maxPitch: MAX_PITCH,
     })
   } catch (e) { return stub }
