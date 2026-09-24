@@ -1,5 +1,77 @@
 # Changelog
 
+## [1.0.0](https://github.com/khagele/core-hunter/compare/server-v1.10.0...server-v1.0.0) (2026-09-24)
+
+
+### Features
+
+* analysis website — multi-hunter map at map.on8ar.eu ([#19](https://github.com/khagele/core-hunter/issues/19)) ([42465fb](https://github.com/khagele/core-hunter/commit/42465fb4226677439b5a86d420cb990847b6334d))
+* **app,server:** draw SF8 nodes on the position layer too ([#430](https://github.com/khagele/core-hunter/issues/430)) ([863c3ac](https://github.com/khagele/core-hunter/commit/863c3ac7f82a2e0ebe503e8ad9f005b8cdcf7b2e)), closes [#418](https://github.com/khagele/core-hunter/issues/418)
+* **app,web,server:** drop Sender unknown, the Unnamed chip already selects the same receptions ([#582](https://github.com/khagele/core-hunter/issues/582)) ([f297d9c](https://github.com/khagele/core-hunter/commit/f297d9c993fdf3cf273177b86b0662efcf259a2c))
+* **app,web,server:** filter receptions by sender-id class ([#528](https://github.com/khagele/core-hunter/issues/528)) ([f10b1ac](https://github.com/khagele/core-hunter/commit/f10b1ace28d7dc55cc80dfc051b2ff58e983aca7))
+* **app,web:** a reading layer that points at the node you heard ([#667](https://github.com/khagele/core-hunter/issues/667)) ([23c823d](https://github.com/khagele/core-hunter/commit/23c823d6b50e871c0220419248f24eba38719f1c))
+* CoreScope mobile-observer points as two optional map layers (adverts/relays) ([32e8481](https://github.com/khagele/core-hunter/commit/32e84819374bae2c4c49f80d0369df7833774de0))
+* CoreScope mobile-observer points as two optional map layers (adverts/relays) ([aa411fd](https://github.com/khagele/core-hunter/commit/aa411fdab14d4124d2474f93fa59874bc76f7836)), closes [#60](https://github.com/khagele/core-hunter/issues/60)
+* identify every zero-hop node (advert + discover) by ID + role, resolve name via API ([3728f26](https://github.com/khagele/core-hunter/commit/3728f262d84fbeab984d130e0979422326532db9)), closes [#41](https://github.com/khagele/core-hunter/issues/41)
+* identify zero-hop nodes (advert + discover) by ID + role, resolve name via API ([5bc0d50](https://github.com/khagele/core-hunter/commit/5bc0d50697cbb390ccb153714aec70584ef11246))
+* lift the 5000-point cap — paged points fetch (map 25k, Locate all) ([#160](https://github.com/khagele/core-hunter/issues/160)) ([0a1413b](https://github.com/khagele/core-hunter/commit/0a1413b5a027de4417ca31a576b0c1e01f3efa7a))
+* Locate merges CoreScope sightings + focus-mode hides other points ([903a46f](https://github.com/khagele/core-hunter/commit/903a46f1799ea971a6548b8b45ada84d162ef979))
+* Locate merges CoreScope sightings + focus-mode hides other points ([ad36014](https://github.com/khagele/core-hunter/commit/ad360145d820d6fea0f98c1b53bb18143d871c9e)), closes [#62](https://github.com/khagele/core-hunter/issues/62)
+* **server,web:** draw node positions from the registry, not from what you heard ([#398](https://github.com/khagele/core-hunter/issues/398)) ([a4ac33b](https://github.com/khagele/core-hunter/commit/a4ac33b60e5062ca6697deb1cf514de7db52c923)), closes [#377](https://github.com/khagele/core-hunter/issues/377)
+* **server,web:** expose server version via /api/version and show it on the site ([c4cde9d](https://github.com/khagele/core-hunter/commit/c4cde9d3e55dc9f193eb0c0df62497e5b34b187c))
+* **server,web:** give a flood with no sender something to filter on ([#497](https://github.com/khagele/core-hunter/issues/497)) ([9362217](https://github.com/khagele/core-hunter/commit/93622172c842693b69db7496c082c40b00e0295a))
+* **server,web:** show a visitor everything that has been mapped ([#466](https://github.com/khagele/core-hunter/issues/466)) ([4dc885d](https://github.com/khagele/core-hunter/commit/4dc885d178e7e52965b96be5e59b8ca9bd05fb0f))
+* **server:** user management, roles, and guest data degradation (v1.0) ([a3a9c8a](https://github.com/khagele/core-hunter/commit/a3a9c8a05d9f09e99d23655b213dd91f0459670e))
+* web filter parity with the app (packet-type + direct-only via hops) ([#170](https://github.com/khagele/core-hunter/issues/170)) ([3ce0640](https://github.com/khagele/core-hunter/commit/3ce0640def61afe4fb0331c2ab2e5dfb6a3ffaec))
+* **web,server:** browsable multi-select target-list picker ([#223](https://github.com/khagele/core-hunter/issues/223)) ([#288](https://github.com/khagele/core-hunter/issues/288)) ([184712b](https://github.com/khagele/core-hunter/commit/184712b101aa84a3aaf0b5adb2898c56f1daacef))
+* **web,server:** ignore a sender from the map ([#500](https://github.com/khagele/core-hunter/issues/500)) ([1b62809](https://github.com/khagele/core-hunter/commit/1b6280983d8de66c79c836fefe1da77122b893c6))
+* **web,server:** tell a hunter when their member verification comes through ([#531](https://github.com/khagele/core-hunter/issues/531)) ([54981ca](https://github.com/khagele/core-hunter/commit/54981ca8c40788c8f63c27324308e93f23bd4a1d))
+
+
+### Bug Fixes
+
+* **server,app:** stop one reception blocking every reception behind it ([#505](https://github.com/khagele/core-hunter/issues/505)) ([c49b87a](https://github.com/khagele/core-hunter/commit/c49b87accbfd047aaa1affc6dbdbbea0ab3419d2)), closes [#454](https://github.com/khagele/core-hunter/issues/454)
+* **server:** emit hex coverage coordinates in GeoJSON [lon,lat] order ([e55514b](https://github.com/khagele/core-hunter/commit/e55514b29e73178aba57db2a9702a636bfe27125))
+* **server:** store an unknown gps accuracy as NULL and reject a positionless payload ([#349](https://github.com/khagele/core-hunter/issues/349)) ([3232b90](https://github.com/khagele/core-hunter/commit/3232b90725380626b955f49b025f9086dacfde5c))
+* **web,server:** say how far back the map reaches instead of "capped" ([#488](https://github.com/khagele/core-hunter/issues/488)) ([5a26e51](https://github.com/khagele/core-hunter/commit/5a26e51ce63675c6e9d703223806df6821850dad)), closes [#440](https://github.com/khagele/core-hunter/issues/440)
+
+
+### Documentation
+
+* dedupe release changelogs (drop merge-commit duplicates) ([#70](https://github.com/khagele/core-hunter/issues/70)) ([10d0528](https://github.com/khagele/core-hunter/commit/10d0528017a72cdc4db530dafaf157a37bb7487f))
+
+
+### Build System
+
+* **server:** build image with golang:1.26-alpine (go.mod requires go 1.25) ([e3d081b](https://github.com/khagele/core-hunter/commit/e3d081b301802f3f63f215262b2ccfff201569e4))
+
+
+### Miscellaneous Chores
+
+* introduce per-component versioning with release-please ([#7](https://github.com/khagele/core-hunter/issues/7)) ([ef511db](https://github.com/khagele/core-hunter/commit/ef511dbc48c3c96102b06933a4199ed8b24d698c))
+* release master ([473dd91](https://github.com/khagele/core-hunter/commit/473dd91fbe22d42017fe03739ea50fc311498319))
+* release master ([2f15176](https://github.com/khagele/core-hunter/commit/2f151765533fcddb061b0b5c288f62f1eb287f51))
+* release master ([68d62e0](https://github.com/khagele/core-hunter/commit/68d62e0d8c2709bf7ba1a36f7d3521f3a6397ca5))
+* release master ([67a1c47](https://github.com/khagele/core-hunter/commit/67a1c47ad65e15b966735b2c22c76615d02a5c8e))
+* release master ([78e291c](https://github.com/khagele/core-hunter/commit/78e291ceefdea9f69b4f139b57813389c2a5ea60))
+* release master ([8c49e65](https://github.com/khagele/core-hunter/commit/8c49e65a6ee5bb2682d476df259bb55234f25d79))
+* release master ([6feda9f](https://github.com/khagele/core-hunter/commit/6feda9fe51b2bfa5b22a1bf6b94b0e2a26a145ff))
+* release master ([#109](https://github.com/khagele/core-hunter/issues/109)) ([1c06593](https://github.com/khagele/core-hunter/commit/1c06593b601453a3734ca99bb09487d1506dd725))
+* release master ([#172](https://github.com/khagele/core-hunter/issues/172)) ([2071ec1](https://github.com/khagele/core-hunter/commit/2071ec116b54cddc5e06cddf850761d157e2ceb0))
+* release master ([#294](https://github.com/khagele/core-hunter/issues/294)) ([8000d31](https://github.com/khagele/core-hunter/commit/8000d31c57708f9d90bad328a54bfa5237c248df))
+* release master ([#348](https://github.com/khagele/core-hunter/issues/348)) ([30ba551](https://github.com/khagele/core-hunter/commit/30ba551af9a54a24078b78afd12ff08c1f2812d3))
+* release master ([#431](https://github.com/khagele/core-hunter/issues/431)) ([bb8a356](https://github.com/khagele/core-hunter/commit/bb8a3567be6af314a807e165af3744d8e002e615))
+* release master ([#487](https://github.com/khagele/core-hunter/issues/487)) ([a2b038a](https://github.com/khagele/core-hunter/commit/a2b038a692d98a8b1426d1963d52c95fd339f458))
+* release master ([#502](https://github.com/khagele/core-hunter/issues/502)) ([107cfd2](https://github.com/khagele/core-hunter/commit/107cfd2f0c06e80607c7287121ae8b6e79d3f0f8))
+* release master ([#527](https://github.com/khagele/core-hunter/issues/527)) ([539d08d](https://github.com/khagele/core-hunter/commit/539d08da6eb832d2ac52e032d40a149947851b71))
+* release master ([#529](https://github.com/khagele/core-hunter/issues/529)) ([8db7001](https://github.com/khagele/core-hunter/commit/8db7001ae83f3b371be8ff2a4b9c806af1fb9bb6))
+* release master ([#532](https://github.com/khagele/core-hunter/issues/532)) ([edbace5](https://github.com/khagele/core-hunter/commit/edbace5264f2002d90c118b6adc88a0c18f7e31c))
+* release master ([#537](https://github.com/khagele/core-hunter/issues/537)) ([dd78da1](https://github.com/khagele/core-hunter/commit/dd78da1a73e1a844c0f9ed573fceb50c52355b7c))
+* release master ([#612](https://github.com/khagele/core-hunter/issues/612)) ([eaf455f](https://github.com/khagele/core-hunter/commit/eaf455f1856085a992bf31bbbae20b36c94cb1f8))
+* release master ([#645](https://github.com/khagele/core-hunter/issues/645)) ([4652691](https://github.com/khagele/core-hunter/commit/46526917790b59adae25746483b243c17fb1e4d5))
+* release master ([#71](https://github.com/khagele/core-hunter/issues/71)) ([24eb458](https://github.com/khagele/core-hunter/commit/24eb458faa8503406e45b30eef1f7e9b4c352139))
+* release server 0.2.0 ([#20](https://github.com/khagele/core-hunter/issues/20)) ([d85c160](https://github.com/khagele/core-hunter/commit/d85c160a6f1284ead236606c5cfbccf20ab83328))
+
 ## [1.10.0](https://github.com/efiten/core-hunter/compare/server-v1.9.0...server-v1.10.0) (2026-09-17)
 
 
